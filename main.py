@@ -12,3 +12,8 @@ while True:
                 print(f"Phone number: {contacts[name]}")
             else:
                 print("Contact not found.")
+    if action == 2:
+        name_user = input("Enter name:")
+        number = input("Enter number:")
+        contacts[name_user] = number
+        print("Successfully!")
