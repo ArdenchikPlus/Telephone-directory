@@ -17,3 +17,9 @@ while True:
         number = input("Enter number:")
         contacts[name_user] = number
         print("Successfully!")
+    if action == 3:
+        for name, phone in contacts.items():
+            print(f"{name}: {phone}")
+    if action == 4:
+        break
+
