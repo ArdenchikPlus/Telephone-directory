@@ -13,7 +13,7 @@ else:
     }
 
 while True:
-    print("1. Find a contact.\n2. Add a contact.\n3. Show all.\n4. Delete contact:\n5. Exit")
+    print("1. Find a contact.\n2. Add a contact.\n3. Show all.\n4. Delete contact:\n5. Edit contact.\n6. Exit")
     action = int(input("Select action: "))
     if action == 1:
         name = input("Enter a name to search: ")
@@ -53,6 +53,24 @@ while True:
             print("Contact not found.")
 
     if action == 5:
+        name_edit = input("Enter the name of the person you want to change the number for:")
+        name_check = name_edit.title()
+        if name_check in contacts:
+            print(f"Current phone number for {name_check}: {contacts[name_check]}")
+
+            while True:
+                new_number = input("Enter new number: ").strip()
+                if new_number.isdigit():
+                    break
+                else:
+                    print("Invalid input! Please enter digits only.")
+
+            contacts[name_check] = new_number
+            print(f"Contact {name_check} successfully updated!")
+        else:
+            print("Contact not found.")
+
+    if action == 6:
         with open(file_name, "w", encoding="utf-8") as file:
             json.dump(contacts, file, ensure_ascii=False, indent=4)
         print("Contacts saved.")
