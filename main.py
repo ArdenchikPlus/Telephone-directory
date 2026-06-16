@@ -58,6 +58,7 @@ while True:
                 print("Invalid input! Please enter digits only (no letters or spaces inside).")
         contacts[name_check] = number
         print("Successfully added!")
+        save_contacts()
         input("\nPress Enter to continue...")
 
     if action == 3:
@@ -72,6 +73,7 @@ while True:
         if name_check in contacts:
             del contacts[name_check] #delete
             print(f"Contact {name_check} successfully deleted!")
+            save_contacts()
         else:
             print("Contact not found.")
         input("\nPress Enter to continue...")
@@ -92,6 +94,7 @@ while True:
 
             contacts[name_check] = new_number
             print(f"Contact {name_check} successfully updated!")
+            save_contacts()
         else:
             print("Contact not found.")
         input("\nPress Enter to continue...")
