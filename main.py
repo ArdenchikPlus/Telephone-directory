@@ -100,8 +100,6 @@ while True:
         input("\nPress Enter to continue...")
 
     if action == 6:
-        with open(file_name, "w", encoding="utf-8") as file:
-            json.dump(contacts, file, ensure_ascii=False, indent=4)
-        print("Contacts saved.")
+        print("See you!")
         break
 
