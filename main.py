@@ -40,6 +40,7 @@ while True:
             print(f"Phone number: {contacts[name_check]}")
         else:
             print("Contact not found.")
+        input("\nPress Enter to continue...")
 
     if action == 2:
         name_user = input("Enter name: ")
@@ -53,10 +54,12 @@ while True:
                 print("Invalid input! Please enter digits only (no letters or spaces inside).")
         contacts[name_check] = number
         print("Successfully added!")
+        input("\nPress Enter to continue...")
 
     if action == 3:
         for name, phone in contacts.items():
             print(f"{name}: {phone}")
+        input("\nPress Enter to continue...")
 
     if action == 4:
         name = input("Enter a name to delete: ")
@@ -67,10 +70,12 @@ while True:
             print(f"Contact {name_check} successfully deleted!")
         else:
             print("Contact not found.")
+        input("\nPress Enter to continue...")
 
     if action == 5:
         name_edit = input("Enter the name of the person you want to change the number for:")
         name_check = name_edit.title()
+
         if name_check in contacts:
             print(f"Current phone number for {name_check}: {contacts[name_check]}")
 
@@ -85,6 +90,7 @@ while True:
             print(f"Contact {name_check} successfully updated!")
         else:
             print("Contact not found.")
+        input("\nPress Enter to continue...")
 
     if action == 6:
         with open(file_name, "w", encoding="utf-8") as file:
