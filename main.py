@@ -36,14 +36,23 @@ while True:
     action = int(action)
 
     if action == 1:
-        name = input("Enter a name to search: ")
 
-        name_check = name.title() # check for capital letters
+        search_query = input("Enter name or phone number to search: ").strip().lower()
+        found = False
 
-        if name_check in contacts:
-            print(f"Phone number: {contacts[name_check]}")
-        else:
-            print("Contact not found.")
+        print("\n--- Search Results ---")
+
+        for name, phone in contacts.items():
+            name_lower = name.lower()
+            phone_lower = phone.lower()
+
+            if search_query in name_lower or search_query in phone_lower:
+                print(f"{name}: {phone}")
+                found = True
+
+        if not found:
+            print("Contacts not found.")
+
         input("\nPress Enter to continue...")
 
     if action == 2:
