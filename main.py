@@ -26,11 +26,17 @@ while True:
             print("Contact not found.")
 
     if action == 2:
-        name_user = input("Enter name:")
+        name_user = input("Enter name: ")
         name_check = name_user.title()
-        number = input("Enter number:")
+
+        while True:
+            number = input("Enter number:").strip()
+            if number.isdigit():
+                break
+            else:
+                print("Invalid input! Please enter digits only (no letters or spaces inside).")
         contacts[name_check] = number
-        print("Successfully!")
+        print("Successfully added!")
 
     if action == 3:
         for name, phone in contacts.items():
