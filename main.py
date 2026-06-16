@@ -12,9 +12,25 @@ else:
         "Anna": "+79994445566"
     }
 
+
 while True:
-    print("1. Find a contact.\n2. Add a contact.\n3. Show all.\n4. Delete contact:\n5. Edit contact.\n6. Exit")
-    action = int(input("Select action: "))
+    print("""
+    1. Find a contact.
+    2. Add a contact.
+    3. Show all.
+    4. Delete contact.
+    5. Edit contact.
+    6. Exit
+    """.strip())
+
+    action = input("Select action: ").strip()
+
+    if not action.isdigit() or action not in "123456":
+        print("Invalid input! Please enter a number from 1 to 6.")
+        continue
+
+    action = int(action)
+
     if action == 1:
         name = input("Enter a name to search: ")
 
