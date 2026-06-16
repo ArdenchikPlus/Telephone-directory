@@ -1,8 +1,12 @@
 import json
 import os
+from xml.etree.ElementTree import indent
 
 file_name = "contacts.json"
 
+def save_contacts():
+    with open (file_name,'w',encoding = 'utf-8') as file:
+        json.dump(contacts,file,ensure_ascii=False,indent = 4)
 if os.path.exists(file_name):
     with open(file_name, "r", encoding="utf-8") as file:
         contacts = json.load(file)
