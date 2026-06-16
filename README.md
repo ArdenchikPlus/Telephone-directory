@@ -1,1 +1,1 @@
-A Python program that allows you to add a contact, search for them, and display all registered numbers. It checks for capital letters and saves all your contacts.
+A Python program that enables contacts, searches for them, and displays all registered numbers. After capitalizing, it saves all your contacts and much more.
