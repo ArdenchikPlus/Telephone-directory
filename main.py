@@ -1,12 +1,12 @@
 import json
 import os
-from xml.etree.ElementTree import indent
 
 file_name = "contacts.json"
 
-def save_contacts():
-    with open (file_name,'w',encoding = 'utf-8') as file:
-        json.dump(contacts,file,ensure_ascii=False,indent = 4)
+def save_contacts(data):
+    with open(file_name, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
 if os.path.exists(file_name):
     with open(file_name, "r", encoding="utf-8") as file:
         contacts = json.load(file)
@@ -16,18 +16,17 @@ else:
         "Anna": "+79994445566"
     }
 
+print("""
+1. Find a contact.
+2. Add a contact.
+3. Show all.
+4. Delete contact.
+5. Edit contact.
+6. Exit
+""".strip())
 
 while True:
-    print("""
-    1. Find a contact.
-    2. Add a contact.
-    3. Show all.
-    4. Delete contact.
-    5. Edit contact.
-    6. Exit
-    """.strip())
-
-    action = input("Select action: ").strip()
+    action = input("\nSelect action: ").strip()
 
     if not action.isdigit() or action not in "123456":
         print("Invalid input! Please enter a number from 1 to 6.")
@@ -36,12 +35,10 @@ while True:
     action = int(action)
 
     if action == 1:
-
         search_query = input("Enter name or phone number to search: ").strip().lower()
         found = False
 
         print("\n--- Search Results ---")
-
         for name, phone in contacts.items():
             name_lower = name.lower()
             phone_lower = phone.lower()
@@ -51,8 +48,7 @@ while True:
                 found = True
 
         if not found:
-            print("Contacts not found.")
-
+            print("No contacts found matching your query.")
         input("\nPress Enter to continue...")
 
     if action == 2:
@@ -60,18 +56,20 @@ while True:
         name_check = name_user.title()
 
         while True:
-            number = input("Enter number:").strip()
+            number = input("Enter number: ").strip()
             if number.isdigit():
                 break
             else:
                 print("Invalid input! Please enter digits only (no letters or spaces inside).")
         contacts[name_check] = number
         print("Successfully added!")
-        save_contacts()
+
+        save_contacts(contacts)
         input("\nPress Enter to continue...")
 
     if action == 3:
-        for name, phone in contacts.items():
+        print(f"\n--- Total Contacts: {len(contacts)} ---")
+        for name, phone in sorted(contacts.items()):
             print(f"{name}: {phone}")
         input("\nPress Enter to continue...")
 
@@ -80,17 +78,17 @@ while True:
         name_check = name.title()
 
         if name_check in contacts:
-            del contacts[name_check] #delete
+            del contacts[name_check]
             print(f"Contact {name_check} successfully deleted!")
-            save_contacts()
+
+            save_contacts(contacts)
         else:
             print("Contact not found.")
         input("\nPress Enter to continue...")
 
     if action == 5:
-        name_edit = input("Enter the name of the person you want to change the number for:")
+        name_edit = input("Enter the name of the person you want to change the number for: ")
         name_check = name_edit.title()
-
         if name_check in contacts:
             print(f"Current phone number for {name_check}: {contacts[name_check]}")
 
@@ -103,12 +101,11 @@ while True:
 
             contacts[name_check] = new_number
             print(f"Contact {name_check} successfully updated!")
-            save_contacts()
+            save_contacts(contacts)
         else:
             print("Contact not found.")
         input("\nPress Enter to continue...")
 
     if action == 6:
-        print("See you!")
+        print("Goodbye!")
         break
-
