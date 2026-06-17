@@ -16,16 +16,16 @@ else:
         "Anna": "+79994445566"
     }
 
-print("""
+while True:
+    print(f"""
+MAIN MENU (Total Contacts: {len(contacts)})
 1. Find a contact.
 2. Add a contact.
 3. Show all.
 4. Delete contact.
 5. Edit contact.
-6. Exit
-""".strip())
+6. Exit""".strip())
 
-while True:
     action = input("\nSelect action: ").strip()
 
     if not action.isdigit() or action not in "123456":
