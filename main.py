@@ -144,21 +144,19 @@ while True:
 
             elif fav_action == "2":
                 query = input("Enter part of the name to add to favorites: ").strip().lower()
-                matches = [name for name in contacts if query in name.lower()]
+
+                # ИЗМЕНЕНО: Ищем контакты, в которых есть совпадение И которых НЕТ в списке избранного
+                matches = [name for name in contacts if query in name.lower() and name not in favorites]
 
                 if not matches:
-                    print("No contacts found in phonebook matching your query.")
+                    print("No new contacts found matching your query (or they are already in favorites).")
                 elif len(matches) == 1:
                     name_to_add = matches[0]
-                    confirm = input(
-                        f"Found 1 contact: '{name_to_add}'. Do you want to add it? (y/n): ").strip().lower()
-                    if confirm == 'y':
-                        if name_to_add in favorites:
-                            print(f"{name_to_add} is already in your favorites!")
-                        else:
-                            favorites.append(name_to_add)
-                            print(f"{name_to_add} added to favorites")
-                            save_favorites(favorites)
+                    confirm = input(f"Found 1 contact: '{name_to_add}'. Do you want to add it? (yes/no): ").strip().lower()
+                    if confirm == 'yes':
+                        favorites.append(name_to_add)
+                        print(f"{name_to_add} added to favorites")
+                        save_favorites(favorites)
                     else:
                         print("Canceled.")
                 else:
@@ -168,16 +166,14 @@ while True:
 
                     exact_name = input("\nEnter exact name: ").strip().title()
                     if exact_name in matches:
-                        if exact_name in favorites:
-                            print(f"{exact_name} is already in your favorites!")
-                        else:
-                            favorites.append(exact_name)
-                            print(f"{exact_name} added to favorites")
-                            save_favorites(favorites)
+                        favorites.append(exact_name)
+                        print(f"{exact_name} added to favorites")
+                        save_favorites(favorites)
                     else:
                         print("Name does not match the list.")
 
                 input("\nPress Enter to continue...")
+
 
             elif fav_action == "3":
                 query = input("Enter part of the name to remove from favorites: ").strip().lower()
@@ -188,8 +184,8 @@ while True:
                 elif len(matches) == 1:
                     name_to_remove = matches[0]
                     confirm = input(
-                        f"Found 1 contact: '{name_to_remove}'. Do you want to remove it? (y/n): ").strip().lower()
-                    if confirm == 'y':
+                        f"Found 1 contact: '{name_to_remove}'. Do you want to remove it? (yes/no): ").strip().lower()
+                    if confirm == 'yes':
                         favorites.remove(name_to_remove)
                         print(f"{name_to_remove} removed from favorites.")
                         save_favorites(favorites)
