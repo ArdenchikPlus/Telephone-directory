@@ -117,5 +117,57 @@ while True:
         input("\nPress Enter to continue...")
 
     if action == 6:
+        while True:
+            print(f"""
+\nFAVORITES MENU (Saved: {len(favorites)})
+1. Show favorites
+2. Add to favorites
+3. Remove from favorites
+4. Back to main menu""".strip())
+
+            fav_action = input("\nSelect favorite action: ").strip()
+            if fav_action not in ["1", "2", "3", "4"]:
+                print("Invalid input! Choose 1-4.")
+                continue
+
+            if fav_action == "1":
+                print("\nYour Favorite Contacts")
+                if not favorites:
+                    print("Your favorites list is empty.")
+                else:
+                    for name in sorted(favorites):
+
+                        if name in contacts:
+                            print(f"{name}: {contacts[name]}")
+                        else:
+                            print(f"{name}: [Contact deleted from main phonebook]")
+                input("\nPress Enter to continue...")
+
+            elif fav_action == "2":
+                name = input("Enter contact name to add to favorites: ").strip().title()
+                if name not in contacts:
+                    print("Error: This contact doesn't exist in your phonebook. Add it there first!")
+                elif name in favorites:
+                    print("This contact is already in your favorites!")
+                else:
+                    favorites.append(name)
+                    print(f"{name} added to favorites ⭐")
+                    save_favorites(favorites)
+                input("\nPress Enter to continue...")
+
+            elif fav_action == "3":
+                name = input("Enter contact name to remove from favorites: ").strip().title()
+                if name in favorites:
+                    favorites.remove(name)
+                    print(f"{name} removed from favorites.")
+                    save_favorites(favorites)
+                else:
+                    print("Contact not found in favorites.")
+                input("\nPress Enter to continue...")
+
+            elif fav_action == "4":
+                break
+
+    if action == 7:
         print("Goodbye!")
         break
