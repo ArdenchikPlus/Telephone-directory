@@ -136,7 +136,6 @@ while True:
                     print("Your favorites list is empty.")
                 else:
                     for name in sorted(favorites):
-
                         if name in contacts:
                             print(f"{name}: {contacts[name]}")
                         else:
@@ -144,25 +143,67 @@ while True:
                 input("\nPress Enter to continue...")
 
             elif fav_action == "2":
-                name = input("Enter contact name to add to favorites: ").strip().title()
-                if name not in contacts:
-                    print("Error: This contact doesn't exist in your phonebook. Add it there first!")
-                elif name in favorites:
-                    print("This contact is already in your favorites!")
+
+                query = input("Enter part of the name to add to favorites: ").strip().lower()
+
+                matches = [name for name in contacts if query in name.lower()]
+
+                if not matches:
+                    print("No contacts found in phonebook matching your query.")
+                elif len(matches) == 1:
+
+                    name_to_add = matches[0]
+                    if name_to_add in favorites:
+                        print(f"{name_to_add} is already in your favorites!")
+                    else:
+                        favorites.append(name_to_add)
+                        print(f"{name_to_add} added to favorites")
+                        save_favorites(favorites)
                 else:
-                    favorites.append(name)
-                    print(f"{name} added to favorites ⭐")
-                    save_favorites(favorites)
+
+                    print("\nMultiple contacts found. Please enter the exact name from this list:")
+                    for match in matches:
+                        print(f" - {match}")
+
+                    exact_name = input("\nEnter exact name: ").strip().title()
+                    if exact_name in matches:
+                        if exact_name in favorites:
+                            print(f"{exact_name} is already in your favorites!")
+                        else:
+                            favorites.append(exact_name)
+                            print(f"{exact_name} added to favorites")
+                            save_favorites(favorites)
+                    else:
+                        print("Name does not match the list.")
+
                 input("\nPress Enter to continue...")
 
             elif fav_action == "3":
-                name = input("Enter contact name to remove from favorites: ").strip().title()
-                if name in favorites:
-                    favorites.remove(name)
-                    print(f"{name} removed from favorites.")
+
+                query = input("Enter part of the name to remove from favorites: ").strip().lower()
+
+                matches = [name for name in favorites if query in name.lower()]
+
+                if not matches:
+                    print("No contacts found in favorites matching your query.")
+                elif len(matches) == 1:
+                    name_to_remove = matches[0]
+                    favorites.remove(name_to_remove)
+                    print(f"{name_to_remove} removed from favorites.")
                     save_favorites(favorites)
                 else:
-                    print("Contact not found in favorites.")
+                    print("\nMultiple favorites found. Please enter the exact name to remove:")
+                    for match in matches:
+                        print(f" - {match}")
+
+                    exact_name = input("\nEnter exact name: ").strip().title()
+                    if exact_name in matches:
+                        favorites.remove(exact_name)
+                        print(f"{exact_name} removed from favorites.")
+                        save_favorites(favorites)
+                    else:
+                        print("Name does not match the list.")
+
                 input("\nPress Enter to continue...")
 
             elif fav_action == "4":
