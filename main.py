@@ -88,12 +88,18 @@ while True:
         name_check = name.title()
 
         if name_check in contacts:
-            del contacts[name_check]
-            print(f"Contact {name_check} successfully deleted!")
 
-            save_contacts(contacts)
+            confirm = input(f"Are you sure you want to delete '{name_check}' from phonebook? (yes/no): ").strip().lower()
+
+            if confirm == 'yes':
+                del contacts[name_check]
+                print(f"Contact {name_check} successfully deleted!")
+                save_contacts(contacts)
+            else:
+                print("Deletion canceled.")
         else:
             print("Contact not found.")
+
         input("\nPress Enter to continue...")
 
     if action == 5:
