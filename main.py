@@ -143,24 +143,25 @@ while True:
                 input("\nPress Enter to continue...")
 
             elif fav_action == "2":
-
                 query = input("Enter part of the name to add to favorites: ").strip().lower()
-
                 matches = [name for name in contacts if query in name.lower()]
 
                 if not matches:
                     print("No contacts found in phonebook matching your query.")
                 elif len(matches) == 1:
-
                     name_to_add = matches[0]
-                    if name_to_add in favorites:
-                        print(f"{name_to_add} is already in your favorites!")
+                    confirm = input(
+                        f"Found 1 contact: '{name_to_add}'. Do you want to add it? (y/n): ").strip().lower()
+                    if confirm == 'y':
+                        if name_to_add in favorites:
+                            print(f"{name_to_add} is already in your favorites!")
+                        else:
+                            favorites.append(name_to_add)
+                            print(f"{name_to_add} added to favorites")
+                            save_favorites(favorites)
                     else:
-                        favorites.append(name_to_add)
-                        print(f"{name_to_add} added to favorites")
-                        save_favorites(favorites)
+                        print("Canceled.")
                 else:
-
                     print("\nMultiple contacts found. Please enter the exact name from this list:")
                     for match in matches:
                         print(f" - {match}")
@@ -179,18 +180,21 @@ while True:
                 input("\nPress Enter to continue...")
 
             elif fav_action == "3":
-
                 query = input("Enter part of the name to remove from favorites: ").strip().lower()
-
                 matches = [name for name in favorites if query in name.lower()]
 
                 if not matches:
                     print("No contacts found in favorites matching your query.")
                 elif len(matches) == 1:
                     name_to_remove = matches[0]
-                    favorites.remove(name_to_remove)
-                    print(f"{name_to_remove} removed from favorites.")
-                    save_favorites(favorites)
+                    confirm = input(
+                        f"Found 1 contact: '{name_to_remove}'. Do you want to remove it? (y/n): ").strip().lower()
+                    if confirm == 'y':
+                        favorites.remove(name_to_remove)
+                        print(f"{name_to_remove} removed from favorites.")
+                        save_favorites(favorites)
+                    else:
+                        print("Canceled.")
                 else:
                     print("\nMultiple favorites found. Please enter the exact name to remove:")
                     for match in matches:
