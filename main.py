@@ -2,19 +2,28 @@ import json
 import os
 
 file_name = "contacts.json"
+fav_file_name = "favorites.json"
 
 def save_contacts(data):
     with open(file_name, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
+def save_favorites(data):
+    with open(fav_file_name, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 if os.path.exists(file_name):
     with open(file_name, "r", encoding="utf-8") as file:
         contacts = json.load(file)
 else:
-    contacts = {
-        "Ivan": "+79991112233",
-        "Anna": "+79994445566"
-    }
+    contacts = {"Ivan": "+79991112233", "Anna": "+79994445566"}
+
+if os.path.exists(fav_file_name):
+    with open(fav_file_name, "r", encoding="utf-8") as file:
+        favorites = json.load(file)
+else:
+    favorites = []
+
 
 while True:
     print(f"""
