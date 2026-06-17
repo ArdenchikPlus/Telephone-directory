@@ -27,18 +27,19 @@ else:
 
 while True:
     print(f"""
-MAIN MENU (Total Contacts: {len(contacts)})
-1. Find a contact.
-2. Add a contact.
-3. Show all.
-4. Delete contact.
-5. Edit contact.
-6. Exit""".strip())
+    MAIN MENU (Total Contacts: {len(contacts)})
+    1. Find a contact.
+    2. Add a contact.
+    3. Show all.
+    4. Delete contact.
+    5. Edit contact.
+    6. Favorites.
+    7. Exit.""".strip())
 
     action = input("\nSelect action: ").strip()
 
-    if not action.isdigit() or action not in "123456":
-        print("Invalid input! Please enter a number from 1 to 6.")
+    if not action.isdigit() or action not in "1234567":
+        print("Invalid input! Please enter a number from 1 to 7.")
         continue
 
     action = int(action)
