@@ -62,6 +62,57 @@ def search_contact():
         )
         no_result_label.pack(pady=20)
 
+
+def open_add_contact_window():
+
+    add_window = ctk.CTkToplevel(app)
+    add_window.title("Add a contact")
+    add_window.geometry("300x350")
+    add_window.resizable(False, False)
+
+    add_window.attributes("-topmost", True)
+
+    title_label = ctk.CTkLabel(master=add_window, text="New contact", font=("Arial", 16, "bold"))
+    title_label.pack(pady=15)
+
+    name_entry = ctk.CTkEntry(master=add_window, placeholder_text="Contact name", width=250)
+    name_entry.pack(pady=10)
+
+    phone_entry = ctk.CTkEntry(master=add_window, placeholder_text="Phone number (numbers only)", width=250)
+    phone_entry.pack(pady=10)
+
+    def save_new_contact():
+        name = name_entry.get().strip().title()
+        phone = phone_entry.get().strip()
+
+        if not name or not phone:
+            error_label.configure(text="Please fill in all fields!", text_color="red")
+            return
+        if not phone.isdigit():
+            error_label.configure(text="The number must consist of digits!", text_color="red")
+            return
+
+        contacts[name] = phone
+        save_contacts(contacts)
+        show_all_contacts()
+        add_window.destroy()
+
+    error_label = ctk.CTkLabel(master=add_window, text="", font=("Arial", 12))
+    error_label.pack(pady=5)
+
+    save_button = ctk.CTkButton(
+        master=add_window,
+        text="Save",
+        width=150,
+        height=35,
+        corner_radius=8,
+        fg_color="#2cb67d",
+        hover_color="#1e8557",
+        command=save_new_contact
+    )
+    save_button.pack(pady=10)
+
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
