@@ -1,4 +1,33 @@
 import customtkinter as ctk
+import json
+import os
+
+file_name = "contacts.json"
+
+if os.path.exists(file_name):
+    with open(file_name, "r", encoding="utf-8") as file:
+        contacts = json.load(file)
+else:
+    contacts = {
+        "Ivan": "+79991112233",
+        "Anna": "+79994445566"
+    }
+
+def show_all_contacts():
+
+    for widget in contacts_frame.winfo_children():
+        widget.destroy()
+
+    for name, phone in sorted(contacts.items()):
+
+        contact_label = ctk.CTkLabel(
+            master=contacts_frame,
+            text=f"👤 {name}: {phone}",
+            font=("Arial", 14),
+            anchor="w"
+        )
+
+        contact_label.pack(fill="x", padx=10, pady=5)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -45,5 +74,7 @@ contacts_frame = ctk.CTkScrollableFrame(
     label_font=("Arial", 12, "bold")
 )
 contacts_frame.pack(pady=20)
+
+show_all_contacts()
 
 app.mainloop()
