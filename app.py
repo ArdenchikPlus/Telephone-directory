@@ -2,6 +2,11 @@ import customtkinter as ctk
 import json
 import os
 
+def save_contacts(data):
+    with open(file_name, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
+
 file_name = "contacts.json"
 
 if os.path.exists(file_name):
