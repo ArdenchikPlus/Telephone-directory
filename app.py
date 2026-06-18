@@ -29,6 +29,39 @@ def show_all_contacts():
 
         contact_label.pack(fill="x", padx=10, pady=5)
 
+def search_contact():
+
+    query = search_entry.get().strip().lower()
+
+    if not query:
+        show_all_contacts()
+        return
+
+    for widget in contacts_frame.winfo_children():
+        widget.destroy()
+
+    found = False
+
+    for name, phone in contacts.items():
+        if query in name.lower() or query in phone.lower():
+            contact_label = ctk.CTkLabel(
+                master=contacts_frame,
+                text=f"👤 {name}: {phone}",
+                font=("Arial", 14),
+                anchor="w"
+            )
+            contact_label.pack(fill="x", padx=10, pady=5)
+            found = True
+
+    if not found:
+        no_result_label = ctk.CTkLabel(
+            master=contacts_frame,
+            text="Nothing found",
+            font=("Arial", 14, "italic"),
+            text_color="gray"
+        )
+        no_result_label.pack(pady=20)
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -61,9 +94,11 @@ search_button = ctk.CTkButton(
     corner_radius=8,
     font=("Arial", 14, "bold"),
     fg_color="#1f6aa5",
-    hover_color="#144870"
+    hover_color="#144870",
+    command=search_contact
 )
 search_button.pack(pady=10)
+
 
 contacts_frame = ctk.CTkScrollableFrame(
     master=app,
