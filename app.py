@@ -36,4 +36,14 @@ search_button = ctk.CTkButton(
 )
 search_button.pack(pady=10)
 
+contacts_frame = ctk.CTkScrollableFrame(
+    master=app,
+    width=350,
+    height=250,
+    corner_radius=8,
+    label_text="Contact list",
+    label_font=("Arial", 12, "bold")
+)
+contacts_frame.pack(pady=20)
+
 app.mainloop()
