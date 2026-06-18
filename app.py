@@ -161,6 +161,19 @@ contacts_frame = ctk.CTkScrollableFrame(
 )
 contacts_frame.pack(pady=20)
 
+add_contact_button = ctk.CTkButton(
+    master=app,
+    text="Add a contact",
+    width=350,
+    height=40,
+    corner_radius=8,
+    fg_color="#2cb67d",
+    hover_color="#1e8557",
+    font=("Arial", 14, "bold"),
+    command=open_add_contact_window
+)
+add_contact_button.pack(pady=10)
+
 show_all_contacts()
 
 app.mainloop()
