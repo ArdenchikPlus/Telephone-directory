@@ -96,8 +96,80 @@ def show_all_contacts():
             label = ctk.CTkLabel(master=confirm_window, text=f"Delete contact '{n}'?", font=("Arial", 14))
             label.pack(pady=15)
 
-            btn_frame = ctk.CTkFrame(master=confirm_window, fg_color="transparent")
-            btn_frame.pack()
+            btn_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+            btn_frame.pack(pady=10)
+
+            add_contact_button = ctk.CTkButton(
+                master=btn_frame,
+                text="➕ Add contact",
+                width=110,
+                height=40,
+                corner_radius=8,
+                fg_color="#2cb67d",
+                hover_color="#1e8557",
+                font=("Arial", 12, "bold"),
+                command=open_add_contact_window
+            )
+            add_contact_button.pack(side="left", padx=3)
+
+            fav_button = ctk.CTkButton(
+                master=btn_frame,
+                text="⭐ Favorites",
+                width=110,
+                height=40,
+                corner_radius=8,
+                fg_color="#1f6aa5",
+                hover_color="#144870",
+                font=("Arial", 12, "bold"),
+                command=open_favorites_window
+            )
+            fav_button.pack(side="left", padx=3)
+
+            def clear_all_contacts_window():
+                if not contacts:
+                    return
+
+                clear_window = ctk.CTkToplevel(app)
+                clear_window.title("Clear Book")
+                clear_window.geometry("280x130")
+                clear_window.resizable(False, False)
+                clear_window.attributes("-topmost", True)
+
+                label = ctk.CTkLabel(master=clear_window, text="Delete ALL contacts?", font=("Arial", 14, "bold"),
+                                     text_color="#e55039")
+                label.pack(pady=15)
+
+                c_btn_frame = ctk.CTkFrame(master=clear_window, fg_color="transparent")
+                c_btn_frame.pack()
+
+                def confirm_clear():
+                    contacts.clear()
+                    favorites.clear()
+                    save_contacts(contacts)
+                    save_favorites(favorites)
+                    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+                    show_all_contacts()
+                    clear_window.destroy()
+
+                yes_btn = ctk.CTkButton(master=c_btn_frame, text="Yes", width=80, fg_color="#e55039",
+                                        hover_color="#b83b26", command=confirm_clear)
+                yes_btn.pack(side="left", padx=10)
+                no_btn = ctk.CTkButton(master=c_btn_frame, text="No", width=80, fg_color="gray", hover_color="#555555",
+                                       command=clear_window.destroy)
+                no_btn.pack(side="left", padx=10)
+
+            clear_button = ctk.CTkButton(
+                master=btn_frame,
+                text="🗑️ Clear All",
+                width=110,
+                height=40,
+                corner_radius=8,
+                fg_color="#e55039",
+                hover_color="#b83b26",
+                font=("Arial", 12, "bold"),
+                command=clear_all_contacts_window
+            )
+            clear_button.pack(side="left", padx=3)
 
             def confirm_delete():
                 del contacts[n]
