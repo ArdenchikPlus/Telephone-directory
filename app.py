@@ -1,10 +1,10 @@
 import base64
 import json
 import os
+import sys
 
 import customtkinter as ctk
 
-# ---------- Constants ----------
 
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
@@ -20,9 +20,6 @@ COLOR_DANGER = "#e55039"
 COLOR_DANGER_HOVER = "#b83b26"
 COLOR_GRAY = "gray"
 COLOR_GRAY_HOVER = "#555555"
-
-
-# ---------- Encryption helpers ----------
 
 def _xor_bytes(data: bytes, key: str) -> bytes:
     key_bytes = key.encode("utf-8")
@@ -45,8 +42,6 @@ def decrypt_data(encoded_str: str, key: str) -> str:
     except Exception:
         return "{}"
 
-
-# ---------- Persistence helpers ----------
 
 def load_json(path, key, default):
     if not os.path.exists(path):
@@ -81,12 +76,18 @@ def load_secret():
 
 
 secret_data = load_secret()
-current_key = secret_data["password"]
-contacts = load_json(FILE_CONTACTS, current_key, dict(DEFAULT_CONTACTS))
-favorites = load_json(FILE_FAVORITES, current_key, [])
+password_is_set = bool(secret_data["password"])
+
+current_key = "" if not password_is_set else None
+contacts = {}
+favorites = {}
 
 
-# ---------- Reusable dialog helpers ----------
+def load_data():
+    global contacts, favorites
+    contacts = load_json(FILE_CONTACTS, current_key, dict(DEFAULT_CONTACTS))
+    favorites = load_json(FILE_FAVORITES, current_key, [])
+
 
 def make_toplevel(title, size, parent=None):
     win = ctk.CTkToplevel(parent or app)
@@ -159,8 +160,6 @@ def delete_contact(name, refresh_callback):
     confirm_dialog(f"Delete contact '{name}'?", do_delete)
 
 
-# ---------- Contact list rendering ----------
-
 def render_contact_row(parent, name, phone, refresh_callback, highlight=False):
     row = ctk.CTkFrame(master=parent, fg_color="transparent")
     row.pack(fill="x", padx=5, pady=3)
@@ -211,8 +210,6 @@ def search_contact():
     display_contacts(matches, search_contact, highlight=True, empty_message="Nothing found")
 
 
-# ---------- Add contact ----------
-
 def open_add_contact_window():
     win = make_toplevel("Add a contact", "300x350")
 
@@ -250,7 +247,6 @@ def open_add_contact_window():
     ctk.CTkButton(master=win, text="Save", width=150, height=35, corner_radius=8,
                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                   command=save_new_contact).pack(pady=10)
-
 
 
 def open_favorites_window():
@@ -327,8 +323,6 @@ def open_favorites_window():
     refresh_fav_list()
 
 
-# ---------- Clear all ----------
-
 def clear_all_contacts_window():
     if not contacts:
         return
@@ -343,47 +337,75 @@ def clear_all_contacts_window():
 
     confirm_dialog("Delete ALL contacts?", do_clear, title="Clear Book")
 
+
 def open_password_window():
-    global current_key, contacts, favorites
+    """Установка мастер-пароля (доступно только пока пароль ещё не задан)."""
+    win = make_toplevel("Set Password", "300x200")
 
-    win = make_toplevel("Password Management", "300x200")
-    is_set = bool(secret_data["password"])
-
-    lbl = ctk.CTkLabel(master=win, text="Enter Password" if is_set else "Set Master Password",
-                        font=("Arial", 16, "bold"))
-    lbl.pack(pady=15)
+    ctk.CTkLabel(master=win, text="Set Master Password", font=("Arial", 16, "bold")).pack(pady=15)
 
     pass_entry = ctk.CTkEntry(master=win, placeholder_text="Password...", width=200, show="*")
     pass_entry.pack(pady=10)
 
-    def handle_password():
-        global current_key, contacts, favorites
+    error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
+    error_label.pack(pady=5)
+
+    def set_password():
+        global current_key
         entered = pass_entry.get().strip()
         if not entered:
+            error_label.configure(text="Password cannot be empty!", text_color="red")
             return
 
-        if is_set:
-            if entered != secret_data["password"]:
-                lbl.configure(text="Wrong Password! ❌", text_color="red")
-                return
-            current_key = entered
-            contacts = load_json(FILE_CONTACTS, current_key, contacts)
-            favorites = load_json(FILE_FAVORITES, current_key, favorites)
-        else:
-            secret_data["password"] = entered
-            current_key = entered
-            with open(FILE_SECRET, "w", encoding="utf-8") as f:
-                json.dump(secret_data, f, ensure_ascii=False, indent=4)
-            save_contacts()
-            save_favorites()
+        secret_data["password"] = entered
+        with open(FILE_SECRET, "w", encoding="utf-8") as f:
+            json.dump(secret_data, f, ensure_ascii=False, indent=4)
 
-        show_all_contacts()
+        current_key = entered
+        save_contacts()
+        save_favorites()
+
+        password_button.pack_forget()
         win.destroy()
 
-    ctk.CTkButton(master=win, text="Confirm", width=120, command=handle_password).pack(pady=10)
+    ctk.CTkButton(master=win, text="Confirm", width=120, command=set_password).pack(pady=10)
+    pass_entry.bind("<Return>", lambda event: set_password())
+    pass_entry.focus()
 
 
-# ---------- UI setup ----------
+def show_lock_screen(on_success):
+    win = ctk.CTkToplevel(app)
+    win.title("Locked")
+    win.geometry("320x220")
+    win.resizable(False, False)
+    win.attributes("-topmost", True)
+    win.protocol("WM_DELETE_WINDOW", lambda: sys.exit(0))
+
+    ctk.CTkLabel(master=win, text="🔒 Enter Password", font=("Arial", 18, "bold")).pack(pady=20)
+
+    pass_entry = ctk.CTkEntry(master=win, placeholder_text="Password", width=220, show="*")
+    pass_entry.pack(pady=10)
+
+    error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
+    error_label.pack(pady=5)
+
+    def try_unlock():
+        global current_key
+        entered = pass_entry.get().strip()
+        if entered != secret_data["password"]:
+            error_label.configure(text="Wrong password! ❌", text_color="red")
+            pass_entry.delete(0, "end")
+            return
+        current_key = entered
+        load_data()
+        win.destroy()
+        on_success()
+
+    ctk.CTkButton(master=win, text="Unlock", width=150, command=try_unlock).pack(pady=15)
+    pass_entry.bind("<Return>", lambda event: try_unlock())
+    pass_entry.focus()
+    win.grab_set()
+
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -420,13 +442,21 @@ ctk.CTkButton(master=btn_frame, text="Favorites", width=170, height=40, corner_r
 bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 bottom_frame.pack(pady=5)
 
-ctk.CTkButton(master=bottom_frame, text="🔐 Password", width=170, height=35, corner_radius=8,
-              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
-              command=open_password_window).pack(side="left", padx=5)
+password_button = ctk.CTkButton(master=bottom_frame, text="🔐 Password", width=170, height=35, corner_radius=8,
+                                 fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+                                 command=open_password_window)
+password_button.pack(side="left", padx=5)
 
 ctk.CTkButton(master=bottom_frame, text="🗑️ Clear all", width=170, height=35, corner_radius=8,
               fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, font=("Arial", 13),
               command=clear_all_contacts_window).pack(side="left", padx=5)
 
 show_all_contacts()
+
+if password_is_set:
+    show_lock_screen(show_all_contacts)
+else:
+    load_data()
+    show_all_contacts()
+
 app.mainloop()
