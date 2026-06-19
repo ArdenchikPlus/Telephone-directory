@@ -19,6 +19,17 @@ else:
         "Anna": "+79994445566"
     }
 
+fav_file_name = "favorites.json"
+
+def save_favorites(data):
+    with open(fav_file_name, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
+if os.path.exists(fav_file_name):
+    with open(fav_file_name, "r", encoding="utf-8") as file:
+        favorites = json.load(file)
+else:
+    favorites = []
 
 def show_all_contacts():
     for widget in contacts_frame.winfo_children():
