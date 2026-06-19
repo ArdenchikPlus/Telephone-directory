@@ -5,7 +5,6 @@ import sys
 
 import customtkinter as ctk
 
-
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
@@ -20,6 +19,7 @@ COLOR_DANGER = "#e55039"
 COLOR_DANGER_HOVER = "#b83b26"
 COLOR_GRAY = "gray"
 COLOR_GRAY_HOVER = "#555555"
+
 
 def _xor_bytes(data: bytes, key: str) -> bytes:
     key_bytes = key.encode("utf-8")
@@ -71,8 +71,16 @@ def save_favorites():
 def load_secret():
     if os.path.exists(FILE_SECRET):
         with open(FILE_SECRET, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"password": ""}
+            data = json.load(f)
+            data.setdefault("password", "")
+            data.setdefault("hint", "")
+            return data
+    return {"password": "", "hint": ""}
+
+
+def save_secret():
+    with open(FILE_SECRET, "w", encoding="utf-8") as f:
+        json.dump(secret_data, f, ensure_ascii=False, indent=4)
 
 
 secret_data = load_secret()
@@ -338,45 +346,136 @@ def clear_all_contacts_window():
     confirm_dialog("Delete ALL contacts?", do_clear, title="Clear Book")
 
 
-def open_password_window():
-    """Установка мастер-пароля (доступно только пока пароль ещё не задан)."""
-    win = make_toplevel("Set Password", "300x200")
+def update_password_button_text():
+    password_button.configure(text="🔁 Change password" if secret_data["password"] else "🔐 Password")
+
+
+def reencrypt_data(old_key, new_key):
+    current_contacts = load_json(FILE_CONTACTS, old_key, dict(DEFAULT_CONTACTS))
+    current_favorites = load_json(FILE_FAVORITES, old_key, [])
+    save_json(FILE_CONTACTS, current_contacts, new_key)
+    save_json(FILE_FAVORITES, current_favorites, new_key)
+    global contacts, favorites
+    contacts = current_contacts
+    favorites = current_favorites
+
+
+def open_set_password_window(parent=None):
+    win = make_toplevel("Set Password", "320x340", parent)
 
     ctk.CTkLabel(master=win, text="Set Master Password", font=("Arial", 16, "bold")).pack(pady=15)
 
-    pass_entry = ctk.CTkEntry(master=win, placeholder_text="Password...", width=200, show="*")
-    pass_entry.pack(pady=10)
+    pass_entry = ctk.CTkEntry(master=win, placeholder_text="New password", width=250, show="*")
+    pass_entry.pack(pady=8)
+
+    hint_entry = ctk.CTkEntry(master=win, placeholder_text="Hint (optional)", width=250)
+    hint_entry.pack(pady=8)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
     error_label.pack(pady=5)
 
-    def set_password():
+    def confirm_set_password():
         global current_key
         entered = pass_entry.get().strip()
+        hint = hint_entry.get().strip()
         if not entered:
             error_label.configure(text="Password cannot be empty!", text_color="red")
             return
 
+        old_key = current_key if current_key else ""
+        reencrypt_data(old_key, entered)
+
         secret_data["password"] = entered
-        with open(FILE_SECRET, "w", encoding="utf-8") as f:
-            json.dump(secret_data, f, ensure_ascii=False, indent=4)
+        secret_data["hint"] = hint
+        save_secret()
 
         current_key = entered
-        save_contacts()
-        save_favorites()
-
-        password_button.pack_forget()
+        update_password_button_text()
         win.destroy()
 
-    ctk.CTkButton(master=win, text="Confirm", width=120, command=set_password).pack(pady=10)
-    pass_entry.bind("<Return>", lambda event: set_password())
+    ctk.CTkButton(master=win, text="Confirm", width=150, fg_color=COLOR_SUCCESS,
+                  hover_color=COLOR_SUCCESS_HOVER, command=confirm_set_password).pack(pady=15)
+    pass_entry.bind("<Return>", lambda event: confirm_set_password())
     pass_entry.focus()
+
+
+def open_forgot_password_window(parent):
+    win = make_toplevel("Forgot Password", "320x260", parent)
+
+    ctk.CTkLabel(master=win, text="Password Recovery", font=("Arial", 16, "bold")).pack(pady=15)
+
+    if not secret_data["hint"]:
+        ctk.CTkLabel(master=win, text="No hint was set for this password.",
+                     font=("Arial", 13), text_color="gray", wraplength=260).pack(pady=20)
+        return
+
+    ctk.CTkLabel(master=win, text="Enter the hint answer:", font=("Arial", 13)).pack(pady=5)
+
+    hint_entry = ctk.CTkEntry(master=win, placeholder_text="Hint answer", width=250)
+    hint_entry.pack(pady=8)
+
+    result_label = ctk.CTkLabel(master=win, text="", font=("Arial", 14, "bold"), wraplength=260)
+    result_label.pack(pady=10)
+
+    def check_hint():
+        answer = hint_entry.get().strip()
+        if answer == secret_data["hint"]:
+            result_label.configure(text=f"Your password: {secret_data['password']}", text_color="#2cb67d")
+        else:
+            result_label.configure(text="Incorrect hint answer!", text_color="red")
+
+    ctk.CTkButton(master=win, text="Check", width=150, fg_color=COLOR_PRIMARY,
+                  hover_color=COLOR_PRIMARY_HOVER, command=check_hint).pack(pady=10)
+    hint_entry.bind("<Return>", lambda event: check_hint())
+    hint_entry.focus()
+
+
+def open_reset_password_window(parent):
+    def do_reset():
+        global current_key
+        old_key = current_key if current_key else ""
+        reencrypt_data(old_key, "")
+
+        secret_data["password"] = ""
+        secret_data["hint"] = ""
+        save_secret()
+
+        current_key = ""
+        update_password_button_text()
+        parent.destroy()
+        show_all_contacts()
+
+    confirm_dialog("Reset password? This removes the master password.", do_reset,
+                   parent=parent, title="Reset Password")
+
+
+def open_password_window():
+    win = make_toplevel("Password", "320x400")
+
+    if not secret_data["password"]:
+        win.destroy()
+        open_set_password_window()
+        return
+
+    ctk.CTkLabel(master=win, text="🔐 Manage Password", font=("Arial", 18, "bold")).pack(pady=20)
+
+    ctk.CTkButton(master=win, text="Change password", width=220, height=38, corner_radius=8,
+                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
+                  command=lambda: open_set_password_window(win)).pack(pady=8)
+
+    ctk.CTkButton(master=win, text="Reset password", width=220, height=38, corner_radius=8,
+                  fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
+                  command=lambda: open_reset_password_window(win)).pack(pady=8)
+
+    ctk.CTkButton(master=win, text="Forgot password?", width=220, height=38, corner_radius=8,
+                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER,
+                  command=lambda: open_forgot_password_window(win)).pack(pady=8)
 
 
 def show_lock_screen(on_success):
     win = ctk.CTkToplevel(app)
     win.title("Locked")
-    win.geometry("320x220")
+    win.geometry("340x320")
     win.resizable(False, False)
     win.attributes("-topmost", True)
     win.protocol("WM_DELETE_WINDOW", lambda: sys.exit(0))
@@ -401,9 +500,13 @@ def show_lock_screen(on_success):
         win.destroy()
         on_success()
 
-    ctk.CTkButton(master=win, text="Unlock", width=150, command=try_unlock).pack(pady=15)
+    ctk.CTkButton(master=win, text="Unlock", width=150, command=try_unlock).pack(pady=10)
     pass_entry.bind("<Return>", lambda event: try_unlock())
     pass_entry.focus()
+
+    ctk.CTkButton(master=win, text="Forgot password?", width=180, fg_color=COLOR_GRAY,
+                  hover_color=COLOR_GRAY_HOVER, command=lambda: open_forgot_password_window(win)).pack(pady=10)
+
     win.grab_set()
 
 
@@ -451,7 +554,7 @@ ctk.CTkButton(master=bottom_frame, text="🗑️ Clear all", width=170, height=3
               fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, font=("Arial", 13),
               command=clear_all_contacts_window).pack(side="left", padx=5)
 
-show_all_contacts()
+update_password_button_text()
 
 if password_is_set:
     show_lock_screen(show_all_contacts)
