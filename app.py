@@ -2,12 +2,13 @@ import customtkinter as ctk
 import json
 import os
 
+file_name = "contacts.json"
+
+
 def save_contacts(data):
     with open(file_name, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
-
-file_name = "contacts.json"
 
 if os.path.exists(file_name):
     with open(file_name, "r", encoding="utf-8") as file:
@@ -17,6 +18,7 @@ else:
         "Ivan": "+79991112233",
         "Anna": "+79994445566"
     }
+
 
 def show_all_contacts():
     for widget in contacts_frame.winfo_children():
@@ -28,11 +30,47 @@ def show_all_contacts():
 
         contact_label = ctk.CTkLabel(
             master=row_frame,
-            text=f"{name}: {phone}",
+            text=f"👤 {name}: {phone}",
             font=("Arial", 14),
             anchor="w"
         )
         contact_label.pack(side="left", fill="x", expand=True, padx=5)
+
+        def open_edit_window(n=name, p=phone):
+            edit_window = ctk.CTkToplevel(app)
+            edit_window.title("Edit contact")
+            edit_window.geometry("300x250")
+            edit_window.resizable(False, False)
+            edit_window.attributes("-topmost", True)
+
+            title_label = ctk.CTkLabel(master=edit_window, text=f"Edit {n}", font=("Arial", 16, "bold"))
+            title_label.pack(pady=15)
+
+            phone_entry = ctk.CTkEntry(master=edit_window, width=250)
+            phone_entry.insert(0, p)
+            phone_entry.pack(pady=10)
+
+            def save_edited_contact():
+                new_phone = phone_entry.get().strip()
+
+                if not new_phone:
+                    error_label.configure(text="Please fill in the number!", text_color="red")
+                    return
+                if not new_phone.isdigit():
+                    error_label.configure(text="The number must consist of digits!", text_color="red")
+                    return
+
+                contacts[n] = new_phone
+                save_contacts(contacts)
+                show_all_contacts()
+                edit_window.destroy()
+
+            error_label = ctk.CTkLabel(master=edit_window, text="", font=("Arial", 12))
+            error_label.pack(pady=5)
+
+            save_button = ctk.CTkButton(master=edit_window, text="Save", width=150, height=35, corner_radius=8,
+                                        fg_color="#1f6aa5", hover_color="#144870", command=save_edited_contact)
+            save_button.pack(pady=10)
 
         def make_delete_cmd(n=name):
             confirm_window = ctk.CTkToplevel(app)
@@ -53,22 +91,20 @@ def show_all_contacts():
                 show_all_contacts()
                 confirm_window.destroy()
 
-            yes_btn = ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color="#e55039", hover_color="#b83b26", command=confirm_delete)
+            yes_btn = ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color="#e55039", hover_color="#b83b26",
+                                    command=confirm_delete)
             yes_btn.pack(side="left", padx=10)
-            no_btn = ctk.CTkButton(master=btn_frame, text="No", width=80, fg_color="gray", hover_color="#555555", command=confirm_window.destroy)
+            no_btn = ctk.CTkButton(master=btn_frame, text="No", width=80, fg_color="gray", hover_color="#555555",
+                                   command=confirm_window.destroy)
             no_btn.pack(side="left", padx=10)
 
-        delete_button = ctk.CTkButton(
-            master=row_frame,
-            text="❌",
-            width=30,
-            height=25,
-            fg_color="#e55039",
-            hover_color="#b83b26",
-            font=("Arial", 10, "bold"),
-            command=make_delete_cmd
-        )
+        delete_button = ctk.CTkButton(master=row_frame, text="❌", width=30, height=25, fg_color="#e55039",
+                                      hover_color="#b83b26", font=("Arial", 10, "bold"), command=make_delete_cmd)
         delete_button.pack(side="right", padx=5)
+
+        edit_button = ctk.CTkButton(master=row_frame, text="✏️", width=30, height=25, fg_color="#1f6aa5",
+                                    hover_color="#144870", font=("Arial", 10, "bold"), command=open_edit_window)
+        edit_button.pack(side="right", padx=5)
 
 
 def search_contact():
@@ -88,12 +124,7 @@ def search_contact():
             row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
             row_frame.pack(fill="x", padx=5, pady=3)
 
-            contact_label = ctk.CTkLabel(
-                master=row_frame,
-                text=f"👤 {name}: {phone}",
-                font=("Arial", 14),
-                anchor="w"
-            )
+            contact_label = ctk.CTkLabel(master=row_frame, text=f"👤 {name}: {phone}", font=("Arial", 14), anchor="w")
             contact_label.pack(side="left", fill="x", expand=True, padx=5)
 
             def make_delete_cmd(n=name):
@@ -122,37 +153,63 @@ def search_contact():
                                        command=confirm_window.destroy)
                 no_btn.pack(side="left", padx=10)
 
-            delete_button = ctk.CTkButton(
-                master=row_frame,
-                text="❌",
-                width=30,
-                height=25,
-                fg_color="#e55039",
-                hover_color="#b83b26",
-                font=("Arial", 10, "bold"),
-                command=make_delete_cmd
-            )
+            def open_edit_window(n=name, p=phone):
+                edit_window = ctk.CTkToplevel(app)
+                edit_window.title("Edit contact")
+                edit_window.geometry("300x250")
+                edit_window.resizable(False, False)
+                edit_window.attributes("-topmost", True)
+
+                title_label = ctk.CTkLabel(master=edit_window, text=f"Edit {n}", font=("Arial", 16, "bold"))
+                title_label.pack(pady=15)
+
+                phone_entry = ctk.CTkEntry(master=edit_window, width=250)
+                phone_entry.insert(0, p)
+                phone_entry.pack(pady=10)
+
+                def save_edited_contact():
+                    new_phone = phone_entry.get().strip()
+
+                    if not new_phone:
+                        error_label.configure(text="Please fill in the number!", text_color="red")
+                        return
+                    if not new_phone.isdigit():
+                        error_label.configure(text="The number must consist of digits!", text_color="red")
+                        return
+
+                    contacts[n] = new_phone
+                    save_contacts(contacts)
+                    search_contact()
+                    edit_window.destroy()
+
+                error_label = ctk.CTkLabel(master=edit_window, text="", font=("Arial", 12))
+                error_label.pack(pady=5)
+
+                save_button = ctk.CTkButton(master=edit_window, text="Save", width=150, height=35, corner_radius=8,
+                                            fg_color="#1f6aa5", hover_color="#144870", command=save_edited_contact)
+                save_button.pack(pady=10)
+
+            delete_button = ctk.CTkButton(master=row_frame, text="❌", width=30, height=25, fg_color="#e55039",
+                                          hover_color="#b83b26", font=("Arial", 10, "bold"), command=make_delete_cmd)
             delete_button.pack(side="right", padx=5)
+
+            edit_button = ctk.CTkButton(master=row_frame, text="✏️", width=30, height=25, fg_color="#1f6aa5",
+                                        hover_color="#144870", font=("Arial", 10, "bold"), command=open_edit_window)
+            edit_button.pack(side="right", padx=5)
 
             found = True
 
     if not found:
-        no_result_label = ctk.CTkLabel(
-            master=contacts_frame,
-            text="Nothing found",
-            font=("Arial", 14, "italic"),
-            text_color="gray"
-        )
+        no_result_label = ctk.CTkLabel(master=contacts_frame, text="Nothing found", font=("Arial", 14, "italic"),
+                                       text_color="gray")
         no_result_label.pack(pady=20)
 
 
 def open_add_contact_window():
-
     add_window = ctk.CTkToplevel(app)
     add_window.title("Add a contact")
     add_window.geometry("300x350")
     add_window.resizable(False, False)
-
     add_window.attributes("-topmost", True)
 
     title_label = ctk.CTkLabel(master=add_window, text="New contact", font=("Arial", 16, "bold"))
@@ -183,16 +240,8 @@ def open_add_contact_window():
     error_label = ctk.CTkLabel(master=add_window, text="", font=("Arial", 12))
     error_label.pack(pady=5)
 
-    save_button = ctk.CTkButton(
-        master=add_window,
-        text="Save",
-        width=150,
-        height=35,
-        corner_radius=8,
-        fg_color="#2cb67d",
-        hover_color="#1e8557",
-        command=save_new_contact
-    )
+    save_button = ctk.CTkButton(master=add_window, text="Save", width=150, height=35, corner_radius=8,
+                                fg_color="#2cb67d", hover_color="#1e8557", command=save_new_contact)
     save_button.pack(pady=10)
 
 
@@ -204,59 +253,20 @@ app.title("Phonebook v1.0")
 app.geometry("500x600")
 app.resizable(False, False)
 
-title_label = ctk.CTkLabel(
-    master=app,
-    text="Telephone directory",
-    font=("Arial", 24, "bold")
-)
+title_label = ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold"))
 title_label.pack(pady=20)
 
-search_entry = ctk.CTkEntry(
-    master=app,
-    placeholder_text="Enter a name or number to search...",
-    width=350,
-    height=40,
-    corner_radius=8
-)
+search_entry = ctk.CTkEntry(master=app, placeholder_text="Enter a name or number to search...", width=350, height=40, corner_radius=8)
 search_entry.pack(pady=10)
 
-search_button = ctk.CTkButton(
-    master=app,
-    text="Find a contact",
-    width=150,
-    height=40,
-    corner_radius=8,
-    font=("Arial", 14, "bold"),
-    fg_color="#1f6aa5",
-    hover_color="#144870",
-    command=search_contact
-)
+search_button = ctk.CTkButton(master=app, text="Find a contact", width=150, height=40, corner_radius=8, font=("Arial", 14, "bold"), fg_color="#1f6aa5", hover_color="#144870", command=search_contact)
 search_button.pack(pady=10)
 
-
-contacts_frame = ctk.CTkScrollableFrame(
-    master=app,
-    width=350,
-    height=250,
-    corner_radius=8,
-    label_text="Contact list",
-    label_font=("Arial", 12, "bold")
-)
+contacts_frame = ctk.CTkScrollableFrame(master=app, width=350, height=250, corner_radius=8, label_text="Contact list", label_font=("Arial", 12, "bold"))
 contacts_frame.pack(pady=20)
 
-add_contact_button = ctk.CTkButton(
-    master=app,
-    text="Add a contact",
-    width=350,
-    height=40,
-    corner_radius=8,
-    fg_color="#2cb67d",
-    hover_color="#1e8557",
-    font=("Arial", 14, "bold"),
-    command=open_add_contact_window
-)
+add_contact_button = ctk.CTkButton(master=app, text="Add a contact", width=350, height=40, corner_radius=8, fg_color="#2cb67d", hover_color="#1e8557", font=("Arial", 14, "bold"), command=open_add_contact_window)
 add_contact_button.pack(pady=10)
 
 show_all_contacts()
-
 app.mainloop()
