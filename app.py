@@ -414,8 +414,7 @@ def open_favorites_window():
             widget.destroy()
 
         if not favorites:
-            empty_lbl = ctk.CTkLabel(master=fav_scroll, text="Favorites list is empty", font=("Arial", 14, "italic"),
-                                     text_color="gray")
+            empty_lbl = ctk.CTkLabel(master=fav_scroll, text="Favorites list is empty", font=("Arial", 14, "italic"), text_color="gray")
             empty_lbl.pack(pady=20)
             return
 
@@ -433,36 +432,57 @@ def open_favorites_window():
                     refresh_fav_list()
                     show_all_contacts()
 
-                rem_btn = ctk.CTkButton(master=f_row, text="🗑️", width=30, height=25, fg_color="#e55039",
-                                        hover_color="#b83b26", font=("Arial", 10), command=remove_fav)
+                rem_btn = ctk.CTkButton(master=f_row, text="🗑️", width=30, height=25, fg_color="#e55039", hover_color="#b83b26", font=("Arial", 10), command=remove_fav)
                 rem_btn.pack(side="right", padx=5)
 
     def add_to_fav():
-        target_name = fav_entry.get().strip().title()
-        if not target_name:
-            return
-        if target_name not in contacts:
-            fav_entry.delete(0, "end")
-            fav_entry.configure(placeholder_text="Contact not found in phonebook!", placeholder_text_color="red")
-            return
-        if target_name in favorites:
-            fav_entry.delete(0, "end")
-            fav_entry.configure(placeholder_text="Already in favorites!", placeholder_text_color="yellow")
+        query = fav_entry.get().strip().lower()
+        if not query:
             return
 
-        favorites.append(target_name)
-        save_favorites(favorites)
-        fav_entry.delete(0, "end")
-        fav_entry.configure(placeholder_text="Type name from list to add...", placeholder_text_color="gray")
-        refresh_fav_list()
-        show_all_contacts()
+        matches = [name for name in contacts if query in name.lower() and name not in favorites]
 
-    add_fav_btn = ctk.CTkButton(master=fav_window, text="Add to favorites", width=150, height=30, fg_color="#1f6aa5",
-                                command=add_to_fav)
+        if not matches:
+            fav_entry.delete(0, "end")
+            fav_entry.configure(placeholder_text="No new matches found!", placeholder_text_color="red")
+            return
+
+        if len(matches) == 1:
+            name_to_add = matches[0]
+
+            confirm_window = ctk.CTkToplevel(fav_window)
+            confirm_window.title("Confirm")
+            confirm_window.geometry("280x130")
+            confirm_window.resizable(False, False)
+            confirm_window.attributes("-topmost", True)
+
+            lbl = ctk.CTkLabel(master=confirm_window, text=f"Add '{name_to_add}' to favorites?", font=("Arial", 14))
+            lbl.pack(pady=15)
+
+            c_frame = ctk.CTkFrame(master=confirm_window, fg_color="transparent")
+            c_frame.pack()
+
+            def confirm_add():
+                favorites.append(name_to_add)
+                save_favorites(favorites)
+                fav_entry.delete(0, "end")
+                fav_entry.configure(placeholder_text="Type name from list to add...", placeholder_text_color="gray")
+                refresh_fav_list()
+                show_all_contacts()
+                confirm_window.destroy()
+
+            y_btn = ctk.CTkButton(master=c_frame, text="Yes", width=80, fg_color="#2cb67d", hover_color="#1e8557", command=confirm_add)
+            y_btn.pack(side="left", padx=10)
+            n_btn = ctk.CTkButton(master=c_frame, text="No", width=80, fg_color="gray", hover_color="#555555", command=confirm_window.destroy)
+            n_btn.pack(side="left", padx=10)
+        else:
+            fav_entry.delete(0, "end")
+            fav_entry.configure(placeholder_text="Multiple found! Be more specific.", placeholder_text_color="yellow")
+
+    add_fav_btn = ctk.CTkButton(master=fav_window, text="Add to favorites", width=150, height=30, fg_color="#1f6aa5", command=add_to_fav)
     add_fav_btn.pack(pady=5)
 
     refresh_fav_list()
-
 
 fav_button = ctk.CTkButton(
     master=btn_frame,
