@@ -40,7 +40,6 @@ def show_all_contacts():
         row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
         row_frame.pack(fill="x", padx=5, pady=3)
 
-        # Изменился формат текста: добавлена звезда (⭐), если контакт находится в списке favorites
         prefix = "⭐ " if name in favorites else "👤 "
 
         contact_label = ctk.CTkLabel(
@@ -102,13 +101,14 @@ def show_all_contacts():
 
             def confirm_delete():
                 del contacts[n]
-                # Изменилось: если контакт удален из основной базы, убираем его и из избранного
                 if n in favorites:
                     favorites.remove(n)
                     save_favorites(favorites)
                 save_contacts(contacts)
+                contacts_frame.configure(label_text=f"Contact list ({len(contacts)})") # <--- СЮДА
                 show_all_contacts()
                 confirm_window.destroy()
+
 
             yes_btn = ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color="#e55039", hover_color="#b83b26",
                                     command=confirm_delete)
@@ -143,7 +143,6 @@ def search_contact():
             row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
             row_frame.pack(fill="x", padx=5, pady=3)
 
-            # Изменился формат текста: добавлена звезда (⭐), если контакт находится в списке favorites
             prefix = "⭐ " if name in favorites else "👤 "
 
             contact_label = ctk.CTkLabel(master=row_frame, text=f"{prefix}{name}: {phone}", font=("Arial", 14),
@@ -165,13 +164,14 @@ def search_contact():
 
                 def confirm_delete():
                     del contacts[n]
-                    # Изменилось: если контакт удален из поиска, убираем его и из избранного
                     if n in favorites:
                         favorites.remove(n)
                         save_favorites(favorites)
                     save_contacts(contacts)
+                    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})") # <--- СЮДА
                     search_contact()
                     confirm_window.destroy()
+
 
                 yes_btn = ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color="#e55039",
                                         hover_color="#b83b26", command=confirm_delete)
@@ -261,8 +261,10 @@ def open_add_contact_window():
 
         contacts[name] = phone
         save_contacts(contacts)
+        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})") # <--- СЮДА
         show_all_contacts()
         add_window.destroy()
+
 
     error_label = ctk.CTkLabel(master=add_window, text="", font=("Arial", 12))
     error_label.pack(pady=5)
@@ -301,7 +303,6 @@ contacts_frame = ctk.CTkScrollableFrame(
     label_font=("Arial", 12, "bold")
 )
 contacts_frame.pack(pady=20)
-
 
 btn_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 btn_frame.pack(pady=10)
