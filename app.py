@@ -31,6 +31,7 @@ if os.path.exists(fav_file_name):
 else:
     favorites = []
 
+
 def show_all_contacts():
     for widget in contacts_frame.winfo_children():
         widget.destroy()
@@ -39,9 +40,12 @@ def show_all_contacts():
         row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
         row_frame.pack(fill="x", padx=5, pady=3)
 
+        # Изменился формат текста: добавлена звезда (⭐), если контакт находится в списке favorites
+        prefix = "⭐ " if name in favorites else "👤 "
+
         contact_label = ctk.CTkLabel(
             master=row_frame,
-            text=f"👤 {name}: {phone}",
+            text=f"{prefix}{name}: {phone}",
             font=("Arial", 14),
             anchor="w"
         )
@@ -98,6 +102,10 @@ def show_all_contacts():
 
             def confirm_delete():
                 del contacts[n]
+                # Изменилось: если контакт удален из основной базы, убираем его и из избранного
+                if n in favorites:
+                    favorites.remove(n)
+                    save_favorites(favorites)
                 save_contacts(contacts)
                 show_all_contacts()
                 confirm_window.destroy()
@@ -135,7 +143,11 @@ def search_contact():
             row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
             row_frame.pack(fill="x", padx=5, pady=3)
 
-            contact_label = ctk.CTkLabel(master=row_frame, text=f"👤 {name}: {phone}", font=("Arial", 14), anchor="w")
+            # Изменился формат текста: добавлена звезда (⭐), если контакт находится в списке favorites
+            prefix = "⭐ " if name in favorites else "👤 "
+
+            contact_label = ctk.CTkLabel(master=row_frame, text=f"{prefix}{name}: {phone}", font=("Arial", 14),
+                                         anchor="w")
             contact_label.pack(side="left", fill="x", expand=True, padx=5)
 
             def make_delete_cmd(n=name):
@@ -153,6 +165,10 @@ def search_contact():
 
                 def confirm_delete():
                     del contacts[n]
+                    # Изменилось: если контакт удален из поиска, убираем его и из избранного
+                    if n in favorites:
+                        favorites.remove(n)
+                        save_favorites(favorites)
                     save_contacts(contacts)
                     search_contact()
                     confirm_window.destroy()
