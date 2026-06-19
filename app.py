@@ -1,35 +1,79 @@
+import base64
 import customtkinter as ctk
 import json
 import os
 
 file_name = "contacts.json"
+fav_file_name = "favorites.json"
+secret_file = "secret.json"
 
+def encrypt_decrypt(data_str, key):
+    if not key:
+        return data_str
+    key_bytes = key.encode('utf-8')
+    data_bytes = data_str.encode('utf-8')
+    decrypted = bytearray(
+        data_bytes[i] ^ key_bytes[i % len(key_bytes)]
+        for i in range(len(data_bytes))
+    )
+    return base64.b64encode(decrypted).decode('utf-8')
+
+def decrypt_data(encoded_str, key):
+    if not key:
+        return encoded_str
+    try:
+        data_bytes = base64.b64decode(encoded_str.encode('utf-8'))
+        key_bytes = key.encode('utf-8')
+        decrypted = bytearray(
+            data_bytes[i] ^ key_bytes[i % len(key_bytes)]
+            for i in range(len(data_bytes))
+        )
+        return decrypted.decode('utf-8')
+    except Exception:
+        return "{}"
+
+if os.path.exists(secret_file):
+    with open(secret_file, "r", encoding="utf-8") as file:
+        secret_data = json.load(file)
+else:
+    secret_data = {"password": ""}
+
+current_key = secret_data["password"]
 
 def save_contacts(data):
+    raw_json = json.dumps(data, ensure_ascii=False, indent=4)
+    encrypted_str = encrypt_decrypt(raw_json, current_key)
     with open(file_name, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
+        file.write(encrypted_str)
 
+def save_favorites(data):
+    raw_json = json.dumps(data, ensure_ascii=False, indent=4)
+    encrypted_str = encrypt_decrypt(raw_json, current_key)
+    with open(fav_file_name, "w", encoding="utf-8") as file:
+        file.write(encrypted_str)
 
 if os.path.exists(file_name):
     with open(file_name, "r", encoding="utf-8") as file:
-        contacts = json.load(file)
+        content = file.read()
+    try:
+        decrypted_str = decrypt_data(content, current_key)
+        contacts = json.loads(decrypted_str)
+    except Exception:
+        contacts = {}
 else:
-    contacts = {
-        "Ivan": "+79991112233",
-        "Anna": "+79994445566"
-    }
-
-fav_file_name = "favorites.json"
-
-def save_favorites(data):
-    with open(fav_file_name, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
+    contacts = {"Ivan": "+79991112233", "Anna": "+79994445566"}
 
 if os.path.exists(fav_file_name):
     with open(fav_file_name, "r", encoding="utf-8") as file:
-        favorites = json.load(file)
+        content = file.read()
+    try:
+        decrypted_str = decrypt_data(content, current_key)
+        favorites = json.loads(decrypted_str)
+    except Exception:
+        favorites = []
 else:
     favorites = []
+
 
 
 def show_all_contacts():
@@ -215,10 +259,15 @@ def search_contact():
             row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
             row_frame.pack(fill="x", padx=5, pady=3)
 
-            prefix = "⭐ " if name in favorites else "👤 "
+            prefix = "⭐" if name in favorites else "👤"
 
-            contact_label = ctk.CTkLabel(master=row_frame, text=f"{prefix}{name}: {phone}", font=("Arial", 14),
-                                         anchor="w")
+            contact_label = ctk.CTkLabel(
+                master=row_frame,
+                text=f"{prefix}{name}: {phone}",
+                font=("Arial", 14, "bold"),
+                text_color="#2cb67d",
+                anchor="w"
+            )
             contact_label.pack(side="left", fill="x", expand=True, padx=5)
 
             def make_delete_cmd(n=name):
@@ -240,10 +289,9 @@ def search_contact():
                         favorites.remove(n)
                         save_favorites(favorites)
                     save_contacts(contacts)
-                    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})") # <--- СЮДА
+                    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
                     search_contact()
                     confirm_window.destroy()
-
 
                 yes_btn = ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color="#e55039",
                                         hover_color="#b83b26", command=confirm_delete)
