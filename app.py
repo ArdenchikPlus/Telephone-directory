@@ -60,6 +60,7 @@ def show_all_contacts():
 
         delete_button = ctk.CTkButton(
             master=row_frame,
+            text="❌",
             width=30,
             height=25,
             fg_color="#e55039",
@@ -71,7 +72,6 @@ def show_all_contacts():
 
 
 def search_contact():
-
     query = search_entry.get().strip().lower()
 
     if not query:
@@ -85,13 +85,55 @@ def search_contact():
 
     for name, phone in contacts.items():
         if query in name.lower() or query in phone.lower():
+            row_frame = ctk.CTkFrame(master=contacts_frame, fg_color="transparent")
+            row_frame.pack(fill="x", padx=5, pady=3)
+
             contact_label = ctk.CTkLabel(
-                master=contacts_frame,
+                master=row_frame,
                 text=f"👤 {name}: {phone}",
                 font=("Arial", 14),
                 anchor="w"
             )
-            contact_label.pack(fill="x", padx=10, pady=5)
+            contact_label.pack(side="left", fill="x", expand=True, padx=5)
+
+            def make_delete_cmd(n=name):
+                confirm_window = ctk.CTkToplevel(app)
+                confirm_window.title("Delete")
+                confirm_window.geometry("280x130")
+                confirm_window.resizable(False, False)
+                confirm_window.attributes("-topmost", True)
+
+                label = ctk.CTkLabel(master=confirm_window, text=f"Delete contact '{n}'?", font=("Arial", 14))
+                label.pack(pady=15)
+
+                btn_frame = ctk.CTkFrame(master=confirm_window, fg_color="transparent")
+                btn_frame.pack()
+
+                def confirm_delete():
+                    del contacts[n]
+                    save_contacts(contacts)
+                    search_contact()
+                    confirm_window.destroy()
+
+                yes_btn = ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color="#e55039",
+                                        hover_color="#b83b26", command=confirm_delete)
+                yes_btn.pack(side="left", padx=10)
+                no_btn = ctk.CTkButton(master=btn_frame, text="No", width=80, fg_color="gray", hover_color="#555555",
+                                       command=confirm_window.destroy)
+                no_btn.pack(side="left", padx=10)
+
+            delete_button = ctk.CTkButton(
+                master=row_frame,
+                text="❌",
+                width=30,
+                height=25,
+                fg_color="#e55039",
+                hover_color="#b83b26",
+                font=("Arial", 10, "bold"),
+                command=make_delete_cmd
+            )
+            delete_button.pack(side="right", padx=5)
+
             found = True
 
     if not found:
