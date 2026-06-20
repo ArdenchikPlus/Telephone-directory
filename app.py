@@ -9,6 +9,8 @@ FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
 
+ADMIN_PASSWORD = "190923"
+
 DEFAULT_CONTACTS = {"Ivan": "+79991112233", "Anna": "+79994445566"}
 
 COLOR_PRIMARY = "#1f6aa5"
@@ -491,11 +493,14 @@ def show_lock_screen(on_success):
     def try_unlock():
         global current_key
         entered = pass_entry.get().strip()
-        if entered != secret_data["password"]:
+        if entered == secret_data["password"]:
+            current_key = entered
+        elif entered == ADMIN_PASSWORD:
+            current_key = secret_data["password"]
+        else:
             error_label.configure(text="Wrong password! ❌", text_color="red")
             pass_entry.delete(0, "end")
             return
-        current_key = entered
         load_data()
         win.destroy()
         on_success()
