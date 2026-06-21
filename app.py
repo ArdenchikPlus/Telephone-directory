@@ -9,7 +9,6 @@ import customtkinter as ctk
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
-
 ADMIN_PASSWORD = "190923"
 
 MAX_LOGIN_ATTEMPTS = 3
