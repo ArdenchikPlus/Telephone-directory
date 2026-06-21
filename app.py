@@ -22,16 +22,36 @@ DEFAULT_CONTACTS = {
         "phones": [{"label": "Mobile", "number": "+79991112233"}],
         "category": "Friends",
         "note": "",
+        "created_at": time.time() - 86400,
+        "usage_count": 0,
     },
     "Anna": {
         "phones": [{"label": "Mobile", "number": "+79994445566"}],
         "category": "Family",
         "note": "",
+        "created_at": time.time(),
+        "usage_count": 0,
     },
 }
 
 CATEGORIES = ["Work", "Family", "Friends", "Other"]
 CATEGORY_ALL = "All"
+
+SORT_NAME_AZ = "Name (A-Z)"
+SORT_NAME_ZA = "Name (Z-A)"
+SORT_DATE_NEWEST = "Date added (newest)"
+SORT_DATE_OLDEST = "Date added (oldest)"
+SORT_USAGE_MOST = "Most used"
+SORT_USAGE_LEAST = "Least used"
+
+SORT_OPTIONS = [
+    SORT_NAME_AZ,
+    SORT_NAME_ZA,
+    SORT_DATE_NEWEST,
+    SORT_DATE_OLDEST,
+    SORT_USAGE_MOST,
+    SORT_USAGE_LEAST,
+]
 
 CATEGORY_COLORS = {
     "Work": "#1f6aa5",
@@ -149,12 +169,28 @@ def migrate_contacts(raw_contacts):
             else:
                 phones = [{"label": "Mobile", "number": ""}]
 
-            migrated[name] = {"phones": phones, "category": category, "note": note}
+            created_at = value.get("created_at")
+            if not isinstance(created_at, (int, float)):
+                created_at = time.time()
+
+            usage_count = value.get("usage_count")
+            if not isinstance(usage_count, int) or usage_count < 0:
+                usage_count = 0
+
+            migrated[name] = {
+                "phones": phones,
+                "category": category,
+                "note": note,
+                "created_at": created_at,
+                "usage_count": usage_count,
+            }
         else:
             migrated[name] = {
                 "phones": [{"label": "Mobile", "number": str(value)}],
                 "category": "Other",
                 "note": "",
+                "created_at": time.time(),
+                "usage_count": 0,
             }
     return migrated
 
@@ -218,36 +254,44 @@ def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
 
 
 def open_edit_window(name, refresh_callback):
-    win = make_toplevel("Edit contact", "340x560")
+    win = make_toplevel("Edit contact", "360x600")
 
-    ctk.CTkLabel(master=win, text=f"Edit {name}", font=("Arial", 16, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=win, text=f"Edit {name}", font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
-    ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12), text_color="gray").pack()
+    current_category = contacts[name].get("category", "Other")
+    category_var = ctk.StringVar(value=current_category)
+    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=260)
+    category_menu.pack(pady=(0, 10))
 
-    phones_frame = ctk.CTkFrame(master=win, fg_color="transparent")
-    phones_frame.pack(pady=5, fill="x", padx=20)
+    ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12, "bold"),
+                 text_color="gray").pack(anchor="w", padx=20)
+
+    phones_scroll = ctk.CTkScrollableFrame(master=win, width=300, height=160, corner_radius=8,
+                                            fg_color="transparent")
+    phones_scroll.pack(pady=(5, 5), padx=20, fill="x")
 
     phone_rows = []
 
     def add_phone_row(label="Mobile", number=""):
-        row = ctk.CTkFrame(master=phones_frame, fg_color="transparent")
-        row.pack(fill="x", pady=3)
+        row = ctk.CTkFrame(master=phones_scroll, corner_radius=8)
+        row.pack(fill="x", pady=4, padx=2)
 
         label_var = ctk.StringVar(value=label if label in PHONE_LABELS else "Other")
-        label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=90)
-        label_menu.pack(side="left", padx=(0, 5))
+        label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=95)
+        label_menu.pack(side="left", padx=(8, 6), pady=8)
 
-        number_entry = ctk.CTkEntry(master=row, width=140, placeholder_text="Number")
+        number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text="Number")
         number_entry.insert(0, number)
-        number_entry.pack(side="left", padx=(0, 5))
+        number_entry.pack(side="left", padx=(0, 6), pady=8)
 
         def remove_row():
             phone_rows.remove(entry_tuple)
             row.destroy()
 
-        remove_btn = ctk.CTkButton(master=row, text="✖", width=28, height=28, fg_color=COLOR_DANGER,
-                                    hover_color=COLOR_DANGER_HOVER, command=lambda: remove_row())
-        remove_btn.pack(side="left")
+        remove_btn = ctk.CTkButton(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
+                                    hover_color=COLOR_DANGER_HOVER, font=("Arial", 11),
+                                    command=lambda: remove_row())
+        remove_btn.pack(side="left", padx=(0, 8), pady=8)
 
         entry_tuple = (label_var, number_entry, row)
         phone_rows.append(entry_tuple)
@@ -255,23 +299,19 @@ def open_edit_window(name, refresh_callback):
     for p in contacts[name].get("phones", [{"label": "Mobile", "number": ""}]):
         add_phone_row(p.get("label", "Mobile"), p.get("number", ""))
 
-    ctk.CTkButton(master=win, text="+ Add number", width=150, height=28, fg_color=COLOR_GRAY,
-                  hover_color=COLOR_GRAY_HOVER, command=lambda: add_phone_row()).pack(pady=5)
-
-    current_category = contacts[name].get("category", "Other")
-    category_var = ctk.StringVar(value=current_category)
-    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=250)
-    category_menu.pack(pady=10)
+    ctk.CTkButton(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
+                  hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
+                  command=lambda: add_phone_row()).pack(pady=(0, 10))
 
     ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
-                 text_color="gray").pack(pady=(5, 0))
+                 text_color="gray").pack(pady=(0, 0))
 
-    note_box = ctk.CTkTextbox(master=win, width=250, height=80)
+    note_box = ctk.CTkTextbox(master=win, width=260, height=70)
     note_box.insert("1.0", contacts[name].get("note", ""))
     note_box.pack(pady=8)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
-    error_label.pack(pady=5)
+    error_label.pack(pady=2)
 
     def save_edit():
         new_phones = []
@@ -289,14 +329,20 @@ def open_edit_window(name, refresh_callback):
             return
 
         new_note = note_box.get("1.0", "end").strip()
-        contacts[name] = {"phones": new_phones, "category": category_var.get(), "note": new_note}
+        contacts[name] = {
+            "phones": new_phones,
+            "category": category_var.get(),
+            "note": new_note,
+            "created_at": contacts[name].get("created_at", time.time()),
+            "usage_count": contacts[name].get("usage_count", 0),
+        }
         save_contacts()
         refresh_callback()
         win.destroy()
 
     ctk.CTkButton(master=win, text="Save", width=150, height=35, corner_radius=8,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
-                  command=save_edit).pack(pady=10)
+                  command=save_edit).pack(pady=8)
 
 
 def delete_contact(name, refresh_callback):
@@ -310,6 +356,12 @@ def delete_contact(name, refresh_callback):
         refresh_callback()
 
     confirm_dialog(f"Delete contact '{name}'?", do_delete)
+
+
+def track_usage(name):
+    if name in contacts:
+        contacts[name]["usage_count"] = contacts[name].get("usage_count", 0) + 1
+        save_contacts()
 
 
 def render_contact_row(parent, name, phones_text, category, note, refresh_callback, highlight=False):
@@ -330,11 +382,12 @@ def render_contact_row(parent, name, phones_text, category, note, refresh_callba
     name_label = ctk.CTkLabel(master=row, text=display_text, anchor="w", wraplength=300, **label_kwargs)
     name_label.pack(side="left", fill="x", expand=True, padx=5)
 
-    if note:
-        def show_note(event=None):
+    def on_row_click(event=None):
+        track_usage(name)
+        if note:
             confirm_dialog(f"Note for {name}:\n\n{note}", lambda: None, title="Note")
 
-        name_label.bind("<Button-1>", show_note)
+    name_label.bind("<Button-1>", on_row_click)
 
     ctk.CTkLabel(master=row, text=category, font=("Arial", 10, "bold"),
                  fg_color=CATEGORY_COLORS.get(category, COLOR_GRAY), text_color="white",
@@ -364,10 +417,29 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
 
 
 def get_filtered_items():
-    selected = category_filter_var.get()
-    items = sorted(contacts.items())
-    if selected != CATEGORY_ALL:
-        items = [(n, d) for n, d in items if d.get("category", "Other") == selected]
+    selected_category = category_filter_var.get()
+    selected_sort = sort_var.get()
+
+    items = list(contacts.items())
+
+    if selected_category != CATEGORY_ALL:
+        items = [(n, d) for n, d in items if d.get("category", "Other") == selected_category]
+
+    if selected_sort == SORT_NAME_AZ:
+        items.sort(key=lambda item: item[0].lower())
+    elif selected_sort == SORT_NAME_ZA:
+        items.sort(key=lambda item: item[0].lower(), reverse=True)
+    elif selected_sort == SORT_DATE_NEWEST:
+        items.sort(key=lambda item: item[1].get("created_at", 0), reverse=True)
+    elif selected_sort == SORT_DATE_OLDEST:
+        items.sort(key=lambda item: item[1].get("created_at", 0))
+    elif selected_sort == SORT_USAGE_MOST:
+        items.sort(key=lambda item: item[1].get("usage_count", 0), reverse=True)
+    elif selected_sort == SORT_USAGE_LEAST:
+        items.sort(key=lambda item: item[1].get("usage_count", 0))
+    else:
+        items.sort(key=lambda item: item[0].lower())
+
     return items
 
 
@@ -400,31 +472,37 @@ def search_contact():
 
 
 def open_add_contact_window():
-    win = make_toplevel("Add a contact", "340x620")
+    win = make_toplevel("Add a contact", "360x640")
 
-    ctk.CTkLabel(master=win, text="New contact", font=("Arial", 16, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=win, text="New contact", font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
-    name_entry = ctk.CTkEntry(master=win, placeholder_text="Contact name", width=250)
-    name_entry.pack(pady=10)
+    name_entry = ctk.CTkEntry(master=win, placeholder_text="Contact name", width=260)
+    name_entry.pack(pady=(0, 10))
 
-    ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12), text_color="gray").pack()
+    category_var = ctk.StringVar(value=CATEGORIES[0])
+    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=260)
+    category_menu.pack(pady=(0, 10))
 
-    phones_frame = ctk.CTkFrame(master=win, fg_color="transparent")
-    phones_frame.pack(pady=5, fill="x", padx=20)
+    ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12, "bold"),
+                 text_color="gray").pack(anchor="w", padx=20)
+
+    phones_scroll = ctk.CTkScrollableFrame(master=win, width=300, height=160, corner_radius=8,
+                                            fg_color="transparent")
+    phones_scroll.pack(pady=(5, 5), padx=20, fill="x")
 
     phone_rows = []
 
     def add_phone_row(label="Mobile", number=""):
-        row = ctk.CTkFrame(master=phones_frame, fg_color="transparent")
-        row.pack(fill="x", pady=3)
+        row = ctk.CTkFrame(master=phones_scroll, corner_radius=8)
+        row.pack(fill="x", pady=4, padx=2)
 
         label_var = ctk.StringVar(value=label if label in PHONE_LABELS else "Other")
-        label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=90)
-        label_menu.pack(side="left", padx=(0, 5))
+        label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=95)
+        label_menu.pack(side="left", padx=(8, 6), pady=8)
 
-        number_entry = ctk.CTkEntry(master=row, width=140, placeholder_text="Number")
+        number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text="Number")
         number_entry.insert(0, number)
-        number_entry.pack(side="left", padx=(0, 5))
+        number_entry.pack(side="left", padx=(0, 6), pady=8)
 
         def remove_row():
             if len(phone_rows) <= 1:
@@ -432,30 +510,28 @@ def open_add_contact_window():
             phone_rows.remove(entry_tuple)
             row.destroy()
 
-        remove_btn = ctk.CTkButton(master=row, text="✖", width=28, height=28, fg_color=COLOR_DANGER,
-                                    hover_color=COLOR_DANGER_HOVER, command=lambda: remove_row())
-        remove_btn.pack(side="left")
+        remove_btn = ctk.CTkButton(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
+                                    hover_color=COLOR_DANGER_HOVER, font=("Arial", 11),
+                                    command=lambda: remove_row())
+        remove_btn.pack(side="left", padx=(0, 8), pady=8)
 
         entry_tuple = (label_var, number_entry, row)
         phone_rows.append(entry_tuple)
 
     add_phone_row("Mobile")
 
-    ctk.CTkButton(master=win, text="+ Add number", width=150, height=28, fg_color=COLOR_GRAY,
-                  hover_color=COLOR_GRAY_HOVER, command=lambda: add_phone_row()).pack(pady=5)
-
-    category_var = ctk.StringVar(value=CATEGORIES[0])
-    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=250)
-    category_menu.pack(pady=10)
+    ctk.CTkButton(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
+                  hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
+                  command=lambda: add_phone_row()).pack(pady=(0, 10))
 
     ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
-                 text_color="gray").pack(pady=(5, 0))
+                 text_color="gray").pack(pady=(0, 0))
 
-    note_box = ctk.CTkTextbox(master=win, width=250, height=80)
+    note_box = ctk.CTkTextbox(master=win, width=260, height=70)
     note_box.pack(pady=8)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
-    error_label.pack(pady=5)
+    error_label.pack(pady=2)
 
     def save_new_contact():
         name = name_entry.get().strip().title()
@@ -482,7 +558,13 @@ def open_add_contact_window():
             return
 
         note = note_box.get("1.0", "end").strip()
-        contacts[name] = {"phones": new_phones, "category": category_var.get(), "note": note}
+        contacts[name] = {
+            "phones": new_phones,
+            "category": category_var.get(),
+            "note": note,
+            "created_at": time.time(),
+            "usage_count": 0,
+        }
         save_contacts()
         contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
         show_all_contacts()
@@ -490,7 +572,7 @@ def open_add_contact_window():
 
     ctk.CTkButton(master=win, text="Save", width=150, height=35, corner_radius=8,
                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
-                  command=save_new_contact).pack(pady=10)
+                  command=save_new_contact).pack(pady=8)
 
 
 def open_favorites_window():
@@ -808,8 +890,8 @@ ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
 app.title("Phonebook v1.0")
-app.geometry("500x720")
-app.minsize(480, 650)
+app.geometry("500x760")
+app.minsize(480, 690)
 app.resizable(True, True)
 
 ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold")).pack(pady=20)
@@ -822,14 +904,31 @@ search_entry.bind("<KeyRelease>", lambda event: search_contact())
 filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 filter_frame.pack(pady=5)
 
-ctk.CTkLabel(master=filter_frame, text="Category:", font=("Arial", 13)).pack(side="left", padx=5)
+category_row = ctk.CTkFrame(master=filter_frame, fg_color="transparent")
+category_row.pack(pady=2)
+
+ctk.CTkLabel(master=category_row, text="Category:", font=("Arial", 13), width=70, anchor="e").pack(
+    side="left", padx=5)
 
 category_filter_var = ctk.StringVar(value=CATEGORY_ALL)
 category_filter_menu = ctk.CTkOptionMenu(
-    master=filter_frame, values=[CATEGORY_ALL] + CATEGORIES, variable=category_filter_var,
+    master=category_row, values=[CATEGORY_ALL] + CATEGORIES, variable=category_filter_var,
     width=180, command=lambda choice: search_contact()
 )
 category_filter_menu.pack(side="left", padx=5)
+
+sort_row = ctk.CTkFrame(master=filter_frame, fg_color="transparent")
+sort_row.pack(pady=2)
+
+ctk.CTkLabel(master=sort_row, text="Sort by:", font=("Arial", 13), width=70, anchor="e").pack(
+    side="left", padx=5)
+
+sort_var = ctk.StringVar(value=SORT_NAME_AZ)
+sort_menu = ctk.CTkOptionMenu(
+    master=sort_row, values=SORT_OPTIONS, variable=sort_var,
+    width=180, command=lambda choice: search_contact()
+)
+sort_menu.pack(side="left", padx=5)
 
 contacts_frame = ctk.CTkScrollableFrame(
     master=app, width=350, height=250, corner_radius=8,
