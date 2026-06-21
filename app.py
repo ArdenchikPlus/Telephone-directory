@@ -3,7 +3,6 @@ import json
 import os
 import sys
 import time
-
 import customtkinter as ctk
 
 FILE_CONTACTS = "contacts.json"
