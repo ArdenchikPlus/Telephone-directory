@@ -3,16 +3,32 @@ import json
 import os
 import sys
 import time
+
 import customtkinter as ctk
 
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
+
 ADMIN_PASSWORD = "190923"
+
 MAX_LOGIN_ATTEMPTS = 3
 LOCKOUT_SECONDS = 30
 
-DEFAULT_CONTACTS = {"Ivan": "+79991112233", "Anna": "+79994445566"}
+DEFAULT_CONTACTS = {
+    "Ivan": {"phone": "+79991112233", "category": "Friends", "note": ""},
+    "Anna": {"phone": "+79994445566", "category": "Family", "note": ""},
+}
+
+CATEGORIES = ["Work", "Family", "Friends", "Other"]
+CATEGORY_ALL = "All"
+
+CATEGORY_COLORS = {
+    "Work": "#1f6aa5",
+    "Family": "#2cb67d",
+    "Friends": "#e8a33d",
+    "Other": "#888888",
+}
 
 COLOR_PRIMARY = "#1f6aa5"
 COLOR_PRIMARY_HOVER = "#144870"
@@ -97,9 +113,24 @@ failed_attempts = 0
 lockout_until = 0.0
 
 
+def migrate_contacts(raw_contacts):
+    migrated = {}
+    for name, value in raw_contacts.items():
+        if isinstance(value, dict):
+            phone = value.get("phone", "")
+            category = value.get("category", "Other")
+            note = value.get("note", "")
+            if category not in CATEGORIES:
+                category = "Other"
+            migrated[name] = {"phone": phone, "category": category, "note": note}
+        else:
+            migrated[name] = {"phone": str(value), "category": "Other", "note": ""}
+    return migrated
+
+
 def load_data():
     global contacts, favorites
-    contacts = load_json(FILE_CONTACTS, current_key, dict(DEFAULT_CONTACTS))
+    contacts = migrate_contacts(load_json(FILE_CONTACTS, current_key, dict(DEFAULT_CONTACTS)))
     favorites = load_json(FILE_FAVORITES, current_key, [])
 
 
@@ -132,13 +163,25 @@ def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
 
 
 def open_edit_window(name, phone, refresh_callback):
-    win = make_toplevel("Edit contact", "300x250")
+    win = make_toplevel("Edit contact", "300x460")
 
     ctk.CTkLabel(master=win, text=f"Edit {name}", font=("Arial", 16, "bold")).pack(pady=15)
 
     phone_entry = ctk.CTkEntry(master=win, width=250)
     phone_entry.insert(0, phone)
     phone_entry.pack(pady=10)
+
+    current_category = contacts[name].get("category", "Other")
+    category_var = ctk.StringVar(value=current_category)
+    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=250)
+    category_menu.pack(pady=10)
+
+    ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
+                 text_color="gray").pack(pady=(5, 0))
+
+    note_box = ctk.CTkTextbox(master=win, width=250, height=100)
+    note_box.insert("1.0", contacts[name].get("note", ""))
+    note_box.pack(pady=8)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
     error_label.pack(pady=5)
@@ -151,7 +194,8 @@ def open_edit_window(name, phone, refresh_callback):
         if not new_phone.isdigit():
             error_label.configure(text="The number must consist of digits!", text_color="red")
             return
-        contacts[name] = new_phone
+        new_note = note_box.get("1.0", "end").strip()
+        contacts[name] = {"phone": new_phone, "category": category_var.get(), "note": new_note}
         save_contacts()
         refresh_callback()
         win.destroy()
@@ -174,7 +218,7 @@ def delete_contact(name, refresh_callback):
     confirm_dialog(f"Delete contact '{name}'?", do_delete)
 
 
-def render_contact_row(parent, name, phone, refresh_callback, highlight=False):
+def render_contact_row(parent, name, phone, category, note, refresh_callback, highlight=False):
     row = ctk.CTkFrame(master=parent, fg_color="transparent")
     row.pack(fill="x", padx=5, pady=3)
 
@@ -185,8 +229,22 @@ def render_contact_row(parent, name, phone, refresh_callback, highlight=False):
         {"font": ("Arial", 14)}
     )
 
-    ctk.CTkLabel(master=row, text=f"{prefix}{name}: {phone}", anchor="w", **label_kwargs).pack(
-        side="left", fill="x", expand=True, padx=5)
+    display_text = f"{prefix}{name}: {phone}"
+    if note:
+        display_text += " 📝"
+
+    name_label = ctk.CTkLabel(master=row, text=display_text, anchor="w", **label_kwargs)
+    name_label.pack(side="left", fill="x", expand=True, padx=5)
+
+    if note:
+        def show_note(event=None):
+            confirm_dialog(f"Note for {name}:\n\n{note}", lambda: None, title="Note")
+
+        name_label.bind("<Button-1>", show_note)
+
+    ctk.CTkLabel(master=row, text=category, font=("Arial", 10, "bold"),
+                 fg_color=CATEGORY_COLORS.get(category, COLOR_GRAY), text_color="white",
+                 corner_radius=6, width=60).pack(side="right", padx=5)
 
     ctk.CTkButton(master=row, text="❌", width=30, height=25, fg_color=COLOR_DANGER,
                   hover_color=COLOR_DANGER_HOVER, font=("Arial", 10, "bold"),
@@ -206,26 +264,37 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
                      text_color="gray").pack(pady=20)
         return
 
-    for name, phone in items:
-        render_contact_row(contacts_frame, name, phone, refresh_callback, highlight)
+    for name, data in items:
+        render_contact_row(contacts_frame, name, data["phone"], data.get("category", "Other"),
+                            data.get("note", ""), refresh_callback, highlight)
+
+
+def get_filtered_items():
+    selected = category_filter_var.get()
+    items = sorted(contacts.items())
+    if selected != CATEGORY_ALL:
+        items = [(n, d) for n, d in items if d.get("category", "Other") == selected]
+    return items
 
 
 def show_all_contacts():
-    display_contacts(sorted(contacts.items()), show_all_contacts)
+    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+    display_contacts(get_filtered_items(), show_all_contacts, empty_message="No contacts in this category")
 
 
 def search_contact():
     query = search_entry.get().strip().lower()
+    base_items = get_filtered_items()
     if not query:
-        show_all_contacts()
+        display_contacts(base_items, search_contact, empty_message="No contacts in this category")
         return
 
-    matches = [(n, p) for n, p in contacts.items() if query in n.lower() or query in p.lower()]
+    matches = [(n, d) for n, d in base_items if query in n.lower() or query in d["phone"].lower()]
     display_contacts(matches, search_contact, highlight=True, empty_message="Nothing found")
 
 
 def open_add_contact_window():
-    win = make_toplevel("Add a contact", "300x350")
+    win = make_toplevel("Add a contact", "300x540")
 
     ctk.CTkLabel(master=win, text="New contact", font=("Arial", 16, "bold")).pack(pady=15)
 
@@ -234,6 +303,16 @@ def open_add_contact_window():
 
     phone_entry = ctk.CTkEntry(master=win, placeholder_text="Phone number (numbers only)", width=250)
     phone_entry.pack(pady=10)
+
+    category_var = ctk.StringVar(value=CATEGORIES[0])
+    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=250)
+    category_menu.pack(pady=10)
+
+    ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
+                 text_color="gray").pack(pady=(5, 0))
+
+    note_box = ctk.CTkTextbox(master=win, width=250, height=100)
+    note_box.pack(pady=8)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
     error_label.pack(pady=5)
@@ -252,7 +331,8 @@ def open_add_contact_window():
             error_label.configure(text="The number must consist of digits!", text_color="red")
             return
 
-        contacts[name] = phone
+        note = note_box.get("1.0", "end").strip()
+        contacts[name] = {"phone": phone, "category": category_var.get(), "note": note}
         save_contacts()
         contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
         show_all_contacts()
@@ -289,7 +369,7 @@ def open_favorites_window():
             row = ctk.CTkFrame(master=fav_scroll, fg_color="transparent")
             row.pack(fill="x", padx=5, pady=3)
 
-            ctk.CTkLabel(master=row, text=f"⭐ {name}: {contacts[name]}", font=("Arial", 14),
+            ctk.CTkLabel(master=row, text=f"⭐ {name}: {contacts[name]['phone']}", font=("Arial", 14),
                          anchor="w").pack(side="left", fill="x", expand=True, padx=5)
 
             def remove_fav(n=name):
@@ -357,7 +437,7 @@ def update_password_button_text():
 
 
 def reencrypt_data(old_key, new_key):
-    current_contacts = load_json(FILE_CONTACTS, old_key, dict(DEFAULT_CONTACTS))
+    current_contacts = migrate_contacts(load_json(FILE_CONTACTS, old_key, dict(DEFAULT_CONTACTS)))
     current_favorites = load_json(FILE_FAVORITES, old_key, [])
     save_json(FILE_CONTACTS, current_contacts, new_key)
     save_json(FILE_FAVORITES, current_favorites, new_key)
@@ -578,8 +658,9 @@ ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
 app.title("Phonebook v1.0")
-app.geometry("500x600")
-app.resizable(False, False)
+app.geometry("500x720")
+app.minsize(480, 650)
+app.resizable(True, True)
 
 ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold")).pack(pady=20)
 
@@ -587,6 +668,18 @@ search_entry = ctk.CTkEntry(master=app, placeholder_text="Enter a name or number
                              width=350, height=40, corner_radius=8)
 search_entry.pack(pady=10)
 search_entry.bind("<KeyRelease>", lambda event: search_contact())
+
+filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+filter_frame.pack(pady=5)
+
+ctk.CTkLabel(master=filter_frame, text="Category:", font=("Arial", 13)).pack(side="left", padx=5)
+
+category_filter_var = ctk.StringVar(value=CATEGORY_ALL)
+category_filter_menu = ctk.CTkOptionMenu(
+    master=filter_frame, values=[CATEGORY_ALL] + CATEGORIES, variable=category_filter_var,
+    width=180, command=lambda choice: search_contact()
+)
+category_filter_menu.pack(side="left", padx=5)
 
 contacts_frame = ctk.CTkScrollableFrame(
     master=app, width=350, height=250, corner_radius=8,
