@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 
 import customtkinter as ctk
 
@@ -254,7 +255,11 @@ def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
 
 
 def open_edit_window(name, refresh_callback):
-    win = make_toplevel("Edit contact", "360x600")
+    base_height = 430
+    row_height = 46
+
+    initial_phones = contacts[name].get("phones", [{"label": "Mobile", "number": ""}])
+    win = make_toplevel("Edit contact", f"360x{base_height + row_height * len(initial_phones)}")
 
     ctk.CTkLabel(master=win, text=f"Edit {name}", font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
@@ -264,17 +269,19 @@ def open_edit_window(name, refresh_callback):
     category_menu.pack(pady=(0, 10))
 
     ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12, "bold"),
-                 text_color="gray").pack(anchor="w", padx=20)
+                 text_color="gray").pack(anchor="w", padx=30)
 
-    phones_scroll = ctk.CTkScrollableFrame(master=win, width=300, height=160, corner_radius=8,
-                                            fg_color="transparent")
-    phones_scroll.pack(pady=(5, 5), padx=20, fill="x")
+    phones_frame = ctk.CTkFrame(master=win, fg_color="transparent")
+    phones_frame.pack(pady=(5, 5), padx=20, fill="x")
 
     phone_rows = []
 
+    def resize_window():
+        win.geometry(f"360x{base_height + row_height * len(phone_rows)}")
+
     def add_phone_row(label="Mobile", number=""):
-        row = ctk.CTkFrame(master=phones_scroll, corner_radius=8)
-        row.pack(fill="x", pady=4, padx=2)
+        row = ctk.CTkFrame(master=phones_frame, corner_radius=8)
+        row.pack(fill="x", pady=4)
 
         label_var = ctk.StringVar(value=label if label in PHONE_LABELS else "Other")
         label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=95)
@@ -285,8 +292,12 @@ def open_edit_window(name, refresh_callback):
         number_entry.pack(side="left", padx=(0, 6), pady=8)
 
         def remove_row():
+            if len(phone_rows) <= 1:
+                error_label.configure(text="At least one number is required!", text_color="red")
+                return
             phone_rows.remove(entry_tuple)
             row.destroy()
+            resize_window()
 
         remove_btn = ctk.CTkButton(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
                                     hover_color=COLOR_DANGER_HOVER, font=("Arial", 11),
@@ -296,12 +307,16 @@ def open_edit_window(name, refresh_callback):
         entry_tuple = (label_var, number_entry, row)
         phone_rows.append(entry_tuple)
 
-    for p in contacts[name].get("phones", [{"label": "Mobile", "number": ""}]):
+    for p in initial_phones:
         add_phone_row(p.get("label", "Mobile"), p.get("number", ""))
+
+    def add_new_row():
+        add_phone_row()
+        resize_window()
 
     ctk.CTkButton(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
-                  command=lambda: add_phone_row()).pack(pady=(0, 10))
+                  command=add_new_row).pack(pady=(0, 10))
 
     ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
                  text_color="gray").pack(pady=(0, 0))
@@ -364,7 +379,8 @@ def track_usage(name):
         save_contacts()
 
 
-def render_contact_row(parent, name, phones_text, category, note, refresh_callback, highlight=False):
+def render_contact_row(parent, name, phones_text, category, note, created_at, usage_count,
+                        refresh_callback, highlight=False):
     row = ctk.CTkFrame(master=parent, fg_color="transparent")
     row.pack(fill="x", padx=5, pady=3)
 
@@ -379,8 +395,32 @@ def render_contact_row(parent, name, phones_text, category, note, refresh_callba
     if note:
         display_text += " 📝"
 
-    name_label = ctk.CTkLabel(master=row, text=display_text, anchor="w", wraplength=300, **label_kwargs)
-    name_label.pack(side="left", fill="x", expand=True, padx=5)
+    ctk.CTkButton(master=row, text="✏️", width=30, height=25, fg_color=COLOR_PRIMARY,
+                  hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 10, "bold"),
+                  command=lambda: open_edit_window(name, refresh_callback)).pack(side="right", padx=5)
+
+    ctk.CTkButton(master=row, text="❌", width=30, height=25, fg_color=COLOR_DANGER,
+                  hover_color=COLOR_DANGER_HOVER, font=("Arial", 10, "bold"),
+                  command=lambda: delete_contact(name, refresh_callback)).pack(side="right", padx=5)
+
+    ctk.CTkLabel(master=row, text=category, font=("Arial", 10, "bold"),
+                 fg_color=CATEGORY_COLORS.get(category, COLOR_GRAY), text_color="white",
+                 corner_radius=6, width=60).pack(side="right", padx=5)
+
+    text_col = ctk.CTkFrame(master=row, fg_color="transparent")
+    text_col.pack(side="left", fill="both", expand=True, padx=5)
+
+    name_label = ctk.CTkLabel(master=text_col, text=display_text, anchor="w", justify="left",
+                               wraplength=170, **label_kwargs)
+    name_label.pack(anchor="w", fill="x")
+
+    try:
+        date_str = datetime.fromtimestamp(created_at).strftime("%d.%m.%Y")
+    except (TypeError, ValueError, OSError):
+        date_str = "unknown"
+    meta_label = ctk.CTkLabel(master=text_col, text=f"Added {date_str} · used {usage_count}x",
+                               anchor="w", font=("Arial", 10), text_color="gray")
+    meta_label.pack(anchor="w", fill="x")
 
     def on_row_click(event=None):
         track_usage(name)
@@ -388,18 +428,7 @@ def render_contact_row(parent, name, phones_text, category, note, refresh_callba
             confirm_dialog(f"Note for {name}:\n\n{note}", lambda: None, title="Note")
 
     name_label.bind("<Button-1>", on_row_click)
-
-    ctk.CTkLabel(master=row, text=category, font=("Arial", 10, "bold"),
-                 fg_color=CATEGORY_COLORS.get(category, COLOR_GRAY), text_color="white",
-                 corner_radius=6, width=60).pack(side="right", padx=5)
-
-    ctk.CTkButton(master=row, text="❌", width=30, height=25, fg_color=COLOR_DANGER,
-                  hover_color=COLOR_DANGER_HOVER, font=("Arial", 10, "bold"),
-                  command=lambda: delete_contact(name, refresh_callback)).pack(side="right", padx=5)
-
-    ctk.CTkButton(master=row, text="✏️", width=30, height=25, fg_color=COLOR_PRIMARY,
-                  hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 10, "bold"),
-                  command=lambda: open_edit_window(name, refresh_callback)).pack(side="right", padx=5)
+    meta_label.bind("<Button-1>", on_row_click)
 
 
 def display_contacts(items, refresh_callback, highlight=False, empty_message=None):
@@ -413,7 +442,8 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
 
     for name, data in items:
         render_contact_row(contacts_frame, name, all_phones_text(data), data.get("category", "Other"),
-                            data.get("note", ""), refresh_callback, highlight)
+                            data.get("note", ""), data.get("created_at", time.time()),
+                            data.get("usage_count", 0), refresh_callback, highlight)
 
 
 def get_filtered_items():
@@ -472,7 +502,10 @@ def search_contact():
 
 
 def open_add_contact_window():
-    win = make_toplevel("Add a contact", "360x640")
+    base_height = 460
+    row_height = 46
+
+    win = make_toplevel("Add a contact", f"360x{base_height + row_height}")
 
     ctk.CTkLabel(master=win, text="New contact", font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
@@ -484,17 +517,19 @@ def open_add_contact_window():
     category_menu.pack(pady=(0, 10))
 
     ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12, "bold"),
-                 text_color="gray").pack(anchor="w", padx=20)
+                 text_color="gray").pack(anchor="w", padx=30)
 
-    phones_scroll = ctk.CTkScrollableFrame(master=win, width=300, height=160, corner_radius=8,
-                                            fg_color="transparent")
-    phones_scroll.pack(pady=(5, 5), padx=20, fill="x")
+    phones_frame = ctk.CTkFrame(master=win, fg_color="transparent")
+    phones_frame.pack(pady=(5, 5), padx=20, fill="x")
 
     phone_rows = []
 
+    def resize_window():
+        win.geometry(f"360x{base_height + row_height * len(phone_rows)}")
+
     def add_phone_row(label="Mobile", number=""):
-        row = ctk.CTkFrame(master=phones_scroll, corner_radius=8)
-        row.pack(fill="x", pady=4, padx=2)
+        row = ctk.CTkFrame(master=phones_frame, corner_radius=8)
+        row.pack(fill="x", pady=4)
 
         label_var = ctk.StringVar(value=label if label in PHONE_LABELS else "Other")
         label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=95)
@@ -506,9 +541,11 @@ def open_add_contact_window():
 
         def remove_row():
             if len(phone_rows) <= 1:
+                error_label.configure(text="At least one number is required!", text_color="red")
                 return
             phone_rows.remove(entry_tuple)
             row.destroy()
+            resize_window()
 
         remove_btn = ctk.CTkButton(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
                                     hover_color=COLOR_DANGER_HOVER, font=("Arial", 11),
@@ -520,9 +557,13 @@ def open_add_contact_window():
 
     add_phone_row("Mobile")
 
+    def add_new_row():
+        add_phone_row()
+        resize_window()
+
     ctk.CTkButton(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
-                  command=lambda: add_phone_row()).pack(pady=(0, 10))
+                  command=add_new_row).pack(pady=(0, 10))
 
     ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
                  text_color="gray").pack(pady=(0, 0))
@@ -890,8 +931,8 @@ ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
 app.title("Phonebook v1.0")
-app.geometry("500x760")
-app.minsize(480, 690)
+app.geometry("560x760")
+app.minsize(540, 690)
 app.resizable(True, True)
 
 ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold")).pack(pady=20)
@@ -931,7 +972,7 @@ sort_menu = ctk.CTkOptionMenu(
 sort_menu.pack(side="left", padx=5)
 
 contacts_frame = ctk.CTkScrollableFrame(
-    master=app, width=350, height=250, corner_radius=8,
+    master=app, width=400, height=280, corner_radius=8,
     label_text=f"Contact list ({len(contacts)})", label_font=("Arial", 12, "bold")
 )
 contacts_frame.pack(pady=20)
