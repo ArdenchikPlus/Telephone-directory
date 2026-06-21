@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import sys
+import time
 
 import customtkinter as ctk
 
@@ -10,6 +11,9 @@ FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
 
 ADMIN_PASSWORD = "190923"
+
+MAX_LOGIN_ATTEMPTS = 3
+LOCKOUT_SECONDS = 30
 
 DEFAULT_CONTACTS = {"Ivan": "+79991112233", "Anna": "+79994445566"}
 
@@ -91,6 +95,9 @@ password_is_set = bool(secret_data["password"])
 current_key = "" if not password_is_set else None
 contacts = {}
 favorites = {}
+
+failed_attempts = 0
+lockout_until = 0.0
 
 
 def load_data():
@@ -477,7 +484,7 @@ def open_password_window():
 def show_lock_screen(on_success):
     win = ctk.CTkToplevel(app)
     win.title("Locked")
-    win.geometry("340x320")
+    win.geometry("340x360")
     win.resizable(False, False)
     win.attributes("-topmost", True)
     win.protocol("WM_DELETE_WINDOW", lambda: sys.exit(0))
@@ -490,27 +497,81 @@ def show_lock_screen(on_success):
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
     error_label.pack(pady=5)
 
+    unlock_button = ctk.CTkButton(master=win, text="Unlock", width=150, command=lambda: try_unlock())
+    unlock_button.pack(pady=10)
+
+    forgot_button = ctk.CTkButton(master=win, text="Forgot password?", width=180, fg_color=COLOR_GRAY,
+                                   hover_color=COLOR_GRAY_HOVER,
+                                   command=lambda: open_forgot_password_window(win))
+    forgot_button.pack(pady=10)
+
+    countdown_job = {"id": None}
+
+    def set_locked_ui(locked):
+        state = "disabled" if locked else "normal"
+        pass_entry.configure(state=state)
+        unlock_button.configure(state=state)
+
+    def update_countdown():
+        global failed_attempts, lockout_until
+        remaining = lockout_until - time.time()
+        if remaining <= 0:
+            failed_attempts = 0
+            lockout_until = 0.0
+            error_label.configure(text="")
+            set_locked_ui(False)
+            pass_entry.focus()
+            countdown_job["id"] = None
+            return
+        error_label.configure(
+            text=f"Too many attempts! Wait {int(remaining) + 1}s ⏳", text_color="red"
+        )
+        countdown_job["id"] = win.after(250, update_countdown)
+
+    def start_lockout():
+        global lockout_until
+        lockout_until = time.time() + LOCKOUT_SECONDS
+        set_locked_ui(True)
+        pass_entry.delete(0, "end")
+        if countdown_job["id"] is None:
+            update_countdown()
+
     def try_unlock():
-        global current_key
+        global current_key, failed_attempts, lockout_until
+
+        if time.time() < lockout_until:
+            return
+
         entered = pass_entry.get().strip()
         if entered == secret_data["password"]:
             current_key = entered
         elif entered == ADMIN_PASSWORD:
             current_key = secret_data["password"]
         else:
-            error_label.configure(text="Wrong password! ❌", text_color="red")
+            failed_attempts += 1
+            remaining_tries = MAX_LOGIN_ATTEMPTS - failed_attempts
             pass_entry.delete(0, "end")
+            if remaining_tries <= 0:
+                start_lockout()
+            else:
+                error_label.configure(
+                    text=f"Wrong password! ❌ ({remaining_tries} attempt(s) left)",
+                    text_color="red"
+                )
             return
+
+        failed_attempts = 0
+        lockout_until = 0.0
         load_data()
         win.destroy()
         on_success()
 
-    ctk.CTkButton(master=win, text="Unlock", width=150, command=try_unlock).pack(pady=10)
     pass_entry.bind("<Return>", lambda event: try_unlock())
     pass_entry.focus()
 
-    ctk.CTkButton(master=win, text="Forgot password?", width=180, fg_color=COLOR_GRAY,
-                  hover_color=COLOR_GRAY_HOVER, command=lambda: open_forgot_password_window(win)).pack(pady=10)
+    if time.time() < lockout_until:
+        set_locked_ui(True)
+        update_countdown()
 
     win.grab_set()
 
