@@ -4,7 +4,6 @@ import os
 import sys
 import time
 from datetime import datetime
-
 import customtkinter as ctk
 
 FILE_CONTACTS = "contacts.json"
