@@ -10,6 +10,9 @@ import customtkinter as ctk
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
+FILE_RECENT = "recent.json"
+
+MAX_RECENT_ITEMS = 20
 
 ADMIN_PASSWORD = "190923"
 
@@ -42,16 +45,12 @@ SORT_NAME_AZ = "Name (A-Z)"
 SORT_NAME_ZA = "Name (Z-A)"
 SORT_DATE_NEWEST = "Date added (newest)"
 SORT_DATE_OLDEST = "Date added (oldest)"
-SORT_USAGE_MOST = "Most used"
-SORT_USAGE_LEAST = "Least used"
 
 SORT_OPTIONS = [
     SORT_NAME_AZ,
     SORT_NAME_ZA,
     SORT_DATE_NEWEST,
     SORT_DATE_OLDEST,
-    SORT_USAGE_MOST,
-    SORT_USAGE_LEAST,
 ]
 
 CATEGORY_COLORS = {
@@ -118,6 +117,10 @@ def save_favorites():
     save_json(FILE_FAVORITES, favorites, current_key)
 
 
+def save_recent():
+    save_json(FILE_RECENT, recent, current_key)
+
+
 def load_secret():
     if os.path.exists(FILE_SECRET):
         with open(FILE_SECRET, "r", encoding="utf-8") as f:
@@ -139,6 +142,7 @@ password_is_set = bool(secret_data["password"])
 current_key = "" if not password_is_set else None
 contacts = {}
 favorites = []
+recent = []
 
 failed_attempts = 0
 lockout_until = 0.0
@@ -220,10 +224,26 @@ def normalize_favorites(raw_favorites):
     return []
 
 
+def normalize_recent(raw_recent):
+    if not isinstance(raw_recent, list):
+        return []
+    cleaned = []
+    for entry in raw_recent:
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+            timestamp = entry.get("timestamp")
+            if not isinstance(timestamp, (int, float)):
+                timestamp = time.time()
+            cleaned.append({"name": entry["name"], "timestamp": timestamp})
+        elif isinstance(entry, str):
+            cleaned.append({"name": entry, "timestamp": time.time()})
+    return cleaned[:MAX_RECENT_ITEMS]
+
+
 def load_data():
-    global contacts, favorites
+    global contacts, favorites, recent
     contacts = migrate_contacts(load_json(FILE_CONTACTS, current_key, dict(DEFAULT_CONTACTS)))
     favorites = normalize_favorites(load_json(FILE_FAVORITES, current_key, []))
+    recent = normalize_recent(load_json(FILE_RECENT, current_key, []))
 
 
 def make_toplevel(title, size, parent=None):
@@ -360,12 +380,23 @@ def open_edit_window(name, refresh_callback):
                   command=save_edit).pack(pady=8)
 
 
+def mark_contact_opened(name):
+    if name not in contacts:
+        return
+    recent[:] = [r for r in recent if r["name"] != name]
+    recent.insert(0, {"name": name, "timestamp": time.time()})
+    del recent[MAX_RECENT_ITEMS:]
+    save_recent()
+
+
 def delete_contact(name, refresh_callback):
     def do_delete():
         del contacts[name]
         if name in favorites:
             favorites.remove(name)
             save_favorites()
+        recent[:] = [r for r in recent if r["name"] != name]
+        save_recent()
         save_contacts()
         contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
         refresh_callback()
@@ -373,13 +404,7 @@ def delete_contact(name, refresh_callback):
     confirm_dialog(f"Delete contact '{name}'?", do_delete)
 
 
-def track_usage(name):
-    if name in contacts:
-        contacts[name]["usage_count"] = contacts[name].get("usage_count", 0) + 1
-        save_contacts()
-
-
-def render_contact_row(parent, name, phones_text, category, note, created_at, usage_count,
+def render_contact_row(parent, name, phones_text, category, note, created_at,
                         refresh_callback, highlight=False):
     row = ctk.CTkFrame(master=parent, fg_color="transparent")
     row.pack(fill="x", padx=5, pady=3)
@@ -414,21 +439,12 @@ def render_contact_row(parent, name, phones_text, category, note, created_at, us
                                wraplength=170, **label_kwargs)
     name_label.pack(anchor="w", fill="x")
 
-    try:
-        date_str = datetime.fromtimestamp(created_at).strftime("%d.%m.%Y")
-    except (TypeError, ValueError, OSError):
-        date_str = "unknown"
-    meta_label = ctk.CTkLabel(master=text_col, text=f"Added {date_str} · used {usage_count}x",
-                               anchor="w", font=("Arial", 10), text_color="gray")
-    meta_label.pack(anchor="w", fill="x")
-
     def on_row_click(event=None):
-        track_usage(name)
+        mark_contact_opened(name)
         if note:
             confirm_dialog(f"Note for {name}:\n\n{note}", lambda: None, title="Note")
 
     name_label.bind("<Button-1>", on_row_click)
-    meta_label.bind("<Button-1>", on_row_click)
 
 
 def display_contacts(items, refresh_callback, highlight=False, empty_message=None):
@@ -443,7 +459,7 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
     for name, data in items:
         render_contact_row(contacts_frame, name, all_phones_text(data), data.get("category", "Other"),
                             data.get("note", ""), data.get("created_at", time.time()),
-                            data.get("usage_count", 0), refresh_callback, highlight)
+                            refresh_callback, highlight)
 
 
 def get_filtered_items():
@@ -463,10 +479,6 @@ def get_filtered_items():
         items.sort(key=lambda item: item[1].get("created_at", 0), reverse=True)
     elif selected_sort == SORT_DATE_OLDEST:
         items.sort(key=lambda item: item[1].get("created_at", 0))
-    elif selected_sort == SORT_USAGE_MOST:
-        items.sort(key=lambda item: item[1].get("usage_count", 0), reverse=True)
-    elif selected_sort == SORT_USAGE_LEAST:
-        items.sort(key=lambda item: item[1].get("usage_count", 0))
     else:
         items.sort(key=lambda item: item[0].lower())
 
@@ -690,6 +702,237 @@ def open_favorites_window():
     refresh_fav_list()
 
 
+def open_recent_window():
+    rec_window = make_toplevel("Recent", "400x450")
+
+    ctk.CTkLabel(master=rec_window, text="🕘 Recently Opened", font=("Arial", 20, "bold")).pack(pady=15)
+
+    rec_scroll = ctk.CTkScrollableFrame(master=rec_window, width=340, height=300, corner_radius=8)
+    rec_scroll.pack(pady=10, padx=10, fill="both", expand=True)
+
+    def refresh_recent_list():
+        for widget in rec_scroll.winfo_children():
+            widget.destroy()
+
+        valid_entries = [r for r in recent if r["name"] in contacts]
+
+        if not valid_entries:
+            ctk.CTkLabel(master=rec_scroll, text="No recently opened contacts yet",
+                         font=("Arial", 14, "italic"), text_color="gray").pack(pady=20)
+            return
+
+        for entry in valid_entries:
+            name = entry["name"]
+            row = ctk.CTkFrame(master=rec_scroll, fg_color="transparent")
+            row.pack(fill="x", padx=5, pady=3)
+
+            try:
+                when = datetime.fromtimestamp(entry["timestamp"]).strftime("%d.%m.%Y %H:%M")
+            except (TypeError, ValueError, OSError):
+                when = "unknown"
+
+            text_col = ctk.CTkFrame(master=row, fg_color="transparent")
+            text_col.pack(side="left", fill="x", expand=True, padx=5)
+
+            ctk.CTkLabel(master=text_col, text=f"🕘 {name}: {all_phones_text(contacts[name])}",
+                         font=("Arial", 13), anchor="w", wraplength=220, justify="left").pack(
+                anchor="w", fill="x")
+            ctk.CTkLabel(master=text_col, text=f"Opened {when}", font=("Arial", 10),
+                         text_color="gray", anchor="w").pack(anchor="w", fill="x")
+
+            ctk.CTkButton(master=row, text="🗑️", width=30, height=25, fg_color=COLOR_DANGER,
+                          hover_color=COLOR_DANGER_HOVER, font=("Arial", 10),
+                          command=lambda n=name: remove_recent(n)).pack(side="right", padx=5)
+
+    def remove_recent(name):
+        recent[:] = [r for r in recent if r["name"] != name]
+        save_recent()
+        refresh_recent_list()
+
+    def clear_recent():
+        def do_clear():
+            recent.clear()
+            save_recent()
+            refresh_recent_list()
+
+        confirm_dialog("Clear recent history?", do_clear, parent=rec_window, title="Clear Recent")
+
+    ctk.CTkButton(master=rec_window, text="Clear history", width=150, height=30, fg_color=COLOR_GRAY,
+                  hover_color=COLOR_GRAY_HOVER, command=clear_recent).pack(pady=5)
+
+    refresh_recent_list()
+
+
+def levenshtein_distance(a, b):
+    a, b = a.lower(), b.lower()
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+
+    previous_row = list(range(len(b) + 1))
+    for i, char_a in enumerate(a):
+        current_row = [i + 1]
+        for j, char_b in enumerate(b):
+            insert_cost = previous_row[j + 1] + 1
+            delete_cost = current_row[j] + 1
+            replace_cost = previous_row[j] + (0 if char_a == char_b else 1)
+            current_row.append(min(insert_cost, delete_cost, replace_cost))
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def names_are_similar(name_a, name_b):
+    if name_a.lower() == name_b.lower():
+        return True
+    distance = levenshtein_distance(name_a, name_b)
+    longer = max(len(name_a), len(name_b))
+    if longer == 0:
+        return False
+    return distance <= 2 and distance / longer <= 0.34
+
+
+def find_duplicate_groups():
+    names = list(contacts.keys())
+    seen = set()
+    groups = []
+
+    for i, name_a in enumerate(names):
+        if name_a in seen:
+            continue
+        group = {name_a}
+        numbers_a = {p["number"] for p in contacts[name_a].get("phones", [])}
+
+        for name_b in names[i + 1:]:
+            if name_b in seen or name_b in group:
+                continue
+            numbers_b = {p["number"] for p in contacts[name_b].get("phones", [])}
+            shares_number = bool(numbers_a & numbers_b)
+            similar_name = names_are_similar(name_a, name_b)
+            if shares_number or similar_name:
+                group.add(name_b)
+
+        if len(group) > 1:
+            groups.append(sorted(group))
+            seen |= group
+
+    return groups
+
+
+def merge_contacts(names_to_merge, win_to_close=None):
+    merged_phones = []
+    seen_numbers = set()
+    merged_category = None
+    merged_notes = []
+    earliest_created_at = None
+    merged_usage_count = 0
+
+    for name in names_to_merge:
+        if name not in contacts:
+            continue
+        data = contacts[name]
+        for p in data.get("phones", []):
+            if p["number"] not in seen_numbers:
+                merged_phones.append(p)
+                seen_numbers.add(p["number"])
+        if merged_category is None and data.get("category"):
+            merged_category = data.get("category")
+        if data.get("note"):
+            merged_notes.append(data["note"])
+        c_at = data.get("created_at")
+        if isinstance(c_at, (int, float)):
+            if earliest_created_at is None or c_at < earliest_created_at:
+                earliest_created_at = c_at
+        merged_usage_count += data.get("usage_count", 0)
+
+    primary_name = names_to_merge[0]
+
+    for name in names_to_merge:
+        if name != primary_name and name in contacts:
+            del contacts[name]
+            if name in favorites:
+                favorites.remove(name)
+            for r in recent:
+                if r["name"] == name:
+                    r["name"] = primary_name
+
+    contacts[primary_name] = {
+        "phones": merged_phones if merged_phones else [{"label": "Mobile", "number": ""}],
+        "category": merged_category or "Other",
+        "note": " / ".join(merged_notes),
+        "created_at": earliest_created_at if earliest_created_at is not None else time.time(),
+        "usage_count": merged_usage_count,
+    }
+
+    save_contacts()
+    save_favorites()
+    save_recent()
+    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+    show_all_contacts()
+
+    if win_to_close is not None:
+        win_to_close.destroy()
+
+
+def open_duplicates_window():
+    groups = find_duplicate_groups()
+
+    win = make_toplevel("Possible duplicates", "380x480")
+
+    ctk.CTkLabel(master=win, text="🔍 Possible Duplicates", font=("Arial", 18, "bold")).pack(pady=15)
+
+    if not groups:
+        ctk.CTkLabel(master=win, text="No duplicates found! 🎉", font=("Arial", 14, "italic"),
+                     text_color="gray").pack(pady=40)
+        return
+
+    scroll = ctk.CTkScrollableFrame(master=win, width=330, height=380, corner_radius=8)
+    scroll.pack(pady=5, padx=10, fill="both", expand=True)
+
+    def render_groups():
+        for widget in scroll.winfo_children():
+            widget.destroy()
+
+        current_groups = find_duplicate_groups()
+        if not current_groups:
+            ctk.CTkLabel(master=scroll, text="No more duplicates! 🎉", font=("Arial", 14, "italic"),
+                         text_color="gray").pack(pady=40)
+            return
+
+        for group in current_groups:
+            card = ctk.CTkFrame(master=scroll, corner_radius=8)
+            card.pack(fill="x", pady=6, padx=4)
+
+            names_text = ", ".join(group)
+            ctk.CTkLabel(master=card, text=names_text, font=("Arial", 13, "bold"),
+                         anchor="w", wraplength=260, justify="left").pack(
+                anchor="w", padx=10, pady=(10, 2))
+
+            for name in group:
+                phones_preview = all_phones_text(contacts.get(name, {}))
+                ctk.CTkLabel(master=card, text=f"  {name}: {phones_preview}", font=("Arial", 11),
+                             text_color="gray", anchor="w", wraplength=260, justify="left").pack(
+                    anchor="w", padx=10)
+
+            def do_merge(g=group):
+                def confirmed():
+                    merge_contacts(g)
+                    render_groups()
+
+                confirm_dialog(
+                    f"Merge {', '.join(g)} into one contact?\nAll numbers will be combined.",
+                    confirmed, parent=win, title="Merge contacts"
+                )
+
+            ctk.CTkButton(master=card, text="Merge into one", width=150, height=28,
+                          fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
+                          font=("Arial", 12), command=do_merge).pack(pady=(8, 10))
+
+    render_groups()
+
+
 def clear_all_contacts_window():
     if not contacts:
         return
@@ -697,8 +940,10 @@ def clear_all_contacts_window():
     def do_clear():
         contacts.clear()
         favorites.clear()
+        recent.clear()
         save_contacts()
         save_favorites()
+        save_recent()
         contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
         show_all_contacts()
 
@@ -712,11 +957,14 @@ def update_password_button_text():
 def reencrypt_data(old_key, new_key):
     current_contacts = migrate_contacts(load_json(FILE_CONTACTS, old_key, dict(DEFAULT_CONTACTS)))
     current_favorites = normalize_favorites(load_json(FILE_FAVORITES, old_key, []))
+    current_recent = normalize_recent(load_json(FILE_RECENT, old_key, []))
     save_json(FILE_CONTACTS, current_contacts, new_key)
     save_json(FILE_FAVORITES, current_favorites, new_key)
-    global contacts, favorites
+    save_json(FILE_RECENT, current_recent, new_key)
+    global contacts, favorites, recent
     contacts = current_contacts
     favorites = current_favorites
+    recent = current_recent
 
 
 def open_set_password_window(parent=None):
@@ -931,8 +1179,8 @@ ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
 app.title("Phonebook v1.0")
-app.geometry("560x760")
-app.minsize(540, 690)
+app.geometry("560x820")
+app.minsize(540, 750)
 app.resizable(True, True)
 
 ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold")).pack(pady=20)
@@ -987,6 +1235,17 @@ ctk.CTkButton(master=btn_frame, text="Add contact", width=170, height=40, corner
 ctk.CTkButton(master=btn_frame, text="Favorites", width=170, height=40, corner_radius=8,
               fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 14, "bold"),
               command=open_favorites_window).pack(side="left", padx=5)
+
+extra_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+extra_frame.pack(pady=5)
+
+ctk.CTkButton(master=extra_frame, text="🕘 Recent", width=170, height=35, corner_radius=8,
+              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+              command=open_recent_window).pack(side="left", padx=5)
+
+ctk.CTkButton(master=extra_frame, text="🔍 Find duplicates", width=170, height=35, corner_radius=8,
+              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+              command=open_duplicates_window).pack(side="left", padx=5)
 
 bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 bottom_frame.pack(pady=5)
