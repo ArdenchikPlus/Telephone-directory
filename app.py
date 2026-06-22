@@ -4,12 +4,14 @@ import os
 import sys
 import time
 from datetime import datetime
+
 import customtkinter as ctk
 
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
 FILE_RECENT = "recent.json"
+FILE_SETTINGS = "settings.json"
 
 MAX_RECENT_ITEMS = 20
 
@@ -133,6 +135,28 @@ def load_secret():
 def save_secret():
     with open(FILE_SECRET, "w", encoding="utf-8") as f:
         json.dump(secret_data, f, ensure_ascii=False, indent=4)
+
+
+def load_settings():
+    if os.path.exists(FILE_SETTINGS):
+        try:
+            with open(FILE_SETTINGS, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                data.setdefault("theme", "dark")
+                if data["theme"] not in ("dark", "light"):
+                    data["theme"] = "dark"
+                return data
+        except Exception:
+            pass
+    return {"theme": "dark"}
+
+
+def save_settings():
+    with open(FILE_SETTINGS, "w", encoding="utf-8") as f:
+        json.dump(app_settings, f, ensure_ascii=False, indent=4)
+
+
+app_settings = load_settings()
 
 
 secret_data = load_secret()
@@ -949,6 +973,21 @@ def clear_all_contacts_window():
     confirm_dialog("Delete ALL contacts?", do_clear, title="Clear Book")
 
 
+def toggle_theme():
+    new_theme = "light" if app_settings["theme"] == "dark" else "dark"
+    app_settings["theme"] = new_theme
+    save_settings()
+    ctk.set_appearance_mode(new_theme)
+    update_theme_button_text()
+
+
+def update_theme_button_text():
+    if app_settings["theme"] == "dark":
+        theme_button.configure(text="☀️ Light mode")
+    else:
+        theme_button.configure(text="🌙 Dark mode")
+
+
 def update_password_button_text():
     password_button.configure(text="🔁 Change password" if secret_data["password"] else "🔐 Password")
 
@@ -1173,13 +1212,13 @@ def show_lock_screen(on_success):
     win.grab_set()
 
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode(app_settings["theme"])
 ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
 app.title("Phonebook v1.0")
-app.geometry("560x820")
-app.minsize(540, 750)
+app.geometry("560x870")
+app.minsize(540, 800)
 app.resizable(True, True)
 
 ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold")).pack(pady=20)
@@ -1246,6 +1285,14 @@ ctk.CTkButton(master=extra_frame, text="🔍 Find duplicates", width=170, height
               fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
               command=open_duplicates_window).pack(side="left", padx=5)
 
+theme_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+theme_frame.pack(pady=5)
+
+theme_button = ctk.CTkButton(master=theme_frame, text="☀️ Light mode", width=345, height=35,
+                              corner_radius=8, fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER,
+                              font=("Arial", 13), command=toggle_theme)
+theme_button.pack(side="left", padx=5)
+
 bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 bottom_frame.pack(pady=5)
 
@@ -1259,6 +1306,7 @@ ctk.CTkButton(master=bottom_frame, text="🗑️ Clear all", width=170, height=3
               command=clear_all_contacts_window).pack(side="left", padx=5)
 
 update_password_button_text()
+update_theme_button_text()
 
 if password_is_set:
     show_lock_screen(show_all_contacts)
