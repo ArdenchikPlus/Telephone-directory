@@ -5,7 +5,6 @@ import sys
 import time
 from datetime import datetime
 from tkinter import filedialog
-
 import customtkinter as ctk
 
 FILE_CONTACTS = "contacts.json"
