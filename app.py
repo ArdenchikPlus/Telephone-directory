@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from tkinter import filedialog
 
 import customtkinter as ctk
 
@@ -145,10 +146,13 @@ def load_settings():
                 data.setdefault("theme", "dark")
                 if data["theme"] not in ("dark", "light"):
                     data["theme"] = "dark"
+                data.setdefault("dup_threshold", "medium")
+                if data["dup_threshold"] not in ("strict", "medium", "loose"):
+                    data["dup_threshold"] = "medium"
                 return data
         except Exception:
             pass
-    return {"theme": "dark"}
+    return {"theme": "dark", "dup_threshold": "medium"}
 
 
 def save_settings():
@@ -807,6 +811,13 @@ def levenshtein_distance(a, b):
     return previous_row[-1]
 
 
+DUP_THRESHOLD_PARAMS = {
+    "strict": {"max_distance": 1, "max_ratio": 0.20},
+    "medium": {"max_distance": 2, "max_ratio": 0.34},
+    "loose": {"max_distance": 3, "max_ratio": 0.50},
+}
+
+
 def names_are_similar(name_a, name_b):
     if name_a.lower() == name_b.lower():
         return True
@@ -814,7 +825,9 @@ def names_are_similar(name_a, name_b):
     longer = max(len(name_a), len(name_b))
     if longer == 0:
         return False
-    return distance <= 2 and distance / longer <= 0.34
+    params = DUP_THRESHOLD_PARAMS.get(app_settings.get("dup_threshold", "medium"),
+                                       DUP_THRESHOLD_PARAMS["medium"])
+    return distance <= params["max_distance"] and distance / longer <= params["max_ratio"]
 
 
 def find_duplicate_groups():
@@ -956,6 +969,99 @@ def open_duplicates_window():
     render_groups()
 
 
+def export_contacts_to_file():
+    path = filedialog.asksaveasfilename(
+        title="Export phonebook",
+        defaultextension=".json",
+        filetypes=[("JSON files", "*.json")],
+        initialfile="phonebook_export.json",
+    )
+    if not path:
+        return
+
+    export_payload = {
+        "contacts": contacts,
+        "favorites": favorites,
+        "exported_at": time.time(),
+    }
+
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(export_payload, f, ensure_ascii=False, indent=4)
+        confirm_dialog(f"Exported {len(contacts)} contact(s) successfully!", lambda: None,
+                       title="Export complete")
+    except Exception as e:
+        confirm_dialog(f"Export failed:\n{e}", lambda: None, title="Export error")
+
+
+def import_contacts_from_file(parent=None):
+    path = filedialog.askopenfilename(
+        title="Import phonebook",
+        filetypes=[("JSON files", "*.json")],
+    )
+    if not path:
+        return
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception as e:
+        confirm_dialog(f"Import failed:\n{e}", lambda: None, parent=parent, title="Import error")
+        return
+
+    if not isinstance(raw, dict) or "contacts" not in raw:
+        confirm_dialog("This file doesn't look like a valid phonebook export.", lambda: None,
+                       parent=parent, title="Import error")
+        return
+
+    imported_contacts = migrate_contacts(raw.get("contacts", {}))
+    imported_favorites = normalize_favorites(raw.get("favorites", []))
+
+    def do_merge():
+        contacts.update(imported_contacts)
+        for fav in imported_favorites:
+            if fav not in favorites and fav in contacts:
+                favorites.append(fav)
+        save_contacts()
+        save_favorites()
+        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+        show_all_contacts()
+
+    def do_replace():
+        contacts.clear()
+        contacts.update(imported_contacts)
+        favorites[:] = [f for f in imported_favorites if f in contacts]
+        save_contacts()
+        save_favorites()
+        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+        show_all_contacts()
+
+    choice_win = make_toplevel("Import options", "320x220", parent)
+    ctk.CTkLabel(master=choice_win, text=f"Found {len(imported_contacts)} contact(s)",
+                 font=("Arial", 14, "bold")).pack(pady=(20, 5))
+    ctk.CTkLabel(master=choice_win, text="How do you want to import them?",
+                 font=("Arial", 12), text_color="gray").pack(pady=(0, 15))
+
+    def confirm_merge():
+        choice_win.destroy()
+        do_merge()
+
+    def confirm_replace():
+        def really_replace():
+            choice_win.destroy()
+            do_replace()
+
+        confirm_dialog("This will delete your current contacts and replace them. Continue?",
+                       really_replace, parent=choice_win, title="Replace all")
+
+    ctk.CTkButton(master=choice_win, text="Merge with existing", width=220, height=35,
+                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
+                  command=confirm_merge).pack(pady=5)
+    ctk.CTkButton(master=choice_win, text="Replace all contacts", width=220, height=35,
+                  fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
+                  command=confirm_replace).pack(pady=5)
+
+
 def clear_all_contacts_window():
     if not contacts:
         return
@@ -973,19 +1079,69 @@ def clear_all_contacts_window():
     confirm_dialog("Delete ALL contacts?", do_clear, title="Clear Book")
 
 
-def toggle_theme():
-    new_theme = "light" if app_settings["theme"] == "dark" else "dark"
-    app_settings["theme"] = new_theme
+def set_theme(theme_name, theme_var=None):
+    app_settings["theme"] = theme_name
     save_settings()
-    ctk.set_appearance_mode(new_theme)
-    update_theme_button_text()
+    ctk.set_appearance_mode(theme_name)
+    if theme_var is not None:
+        theme_var.set(theme_name)
 
 
-def update_theme_button_text():
-    if app_settings["theme"] == "dark":
-        theme_button.configure(text="☀️ Light mode")
-    else:
-        theme_button.configure(text="🌙 Dark mode")
+def set_dup_threshold(level):
+    app_settings["dup_threshold"] = level
+    save_settings()
+
+
+def open_settings_window():
+    win = make_toplevel("Settings", "380x520")
+
+    ctk.CTkLabel(master=win, text="⚙️ Settings", font=("Arial", 18, "bold")).pack(pady=(20, 15))
+
+    theme_section = ctk.CTkFrame(master=win, corner_radius=8)
+    theme_section.pack(fill="x", padx=20, pady=8)
+
+    ctk.CTkLabel(master=theme_section, text="Appearance", font=("Arial", 13, "bold")).pack(
+        anchor="w", padx=12, pady=(10, 5))
+
+    theme_var = ctk.StringVar(value=app_settings["theme"])
+    theme_row = ctk.CTkFrame(master=theme_section, fg_color="transparent")
+    theme_row.pack(fill="x", padx=12, pady=(0, 12))
+
+    ctk.CTkRadioButton(master=theme_row, text="🌙 Dark", variable=theme_var, value="dark",
+                        command=lambda: set_theme("dark", theme_var)).pack(side="left", padx=(0, 20))
+    ctk.CTkRadioButton(master=theme_row, text="☀️ Light", variable=theme_var, value="light",
+                        command=lambda: set_theme("light", theme_var)).pack(side="left")
+
+    dup_section = ctk.CTkFrame(master=win, corner_radius=8)
+    dup_section.pack(fill="x", padx=20, pady=8)
+
+    ctk.CTkLabel(master=dup_section, text="Duplicate detection sensitivity",
+                 font=("Arial", 13, "bold")).pack(anchor="w", padx=12, pady=(10, 2))
+    ctk.CTkLabel(master=dup_section,
+                 text="How strict the name-matching is when looking for duplicates",
+                 font=("Arial", 11), text_color="gray", wraplength=320, justify="left").pack(
+        anchor="w", padx=12, pady=(0, 8))
+
+    dup_var = ctk.StringVar(value=app_settings.get("dup_threshold", "medium"))
+    dup_menu = ctk.CTkOptionMenu(
+        master=dup_section, values=["strict", "medium", "loose"], variable=dup_var,
+        width=200, command=set_dup_threshold
+    )
+    dup_menu.pack(anchor="w", padx=12, pady=(0, 12))
+
+    data_section = ctk.CTkFrame(master=win, corner_radius=8)
+    data_section.pack(fill="x", padx=20, pady=8)
+
+    ctk.CTkLabel(master=data_section, text="Backup & restore", font=("Arial", 13, "bold")).pack(
+        anchor="w", padx=12, pady=(10, 8))
+
+    ctk.CTkButton(master=data_section, text="⬇️ Export contacts to JSON", width=260, height=35,
+                  fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
+                  command=export_contacts_to_file).pack(padx=12, pady=(0, 8))
+
+    ctk.CTkButton(master=data_section, text="⬆️ Import contacts from JSON", width=260, height=35,
+                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
+                  command=lambda: import_contacts_from_file(win)).pack(padx=12, pady=(0, 12))
 
 
 def update_password_button_text():
@@ -1285,14 +1441,6 @@ ctk.CTkButton(master=extra_frame, text="🔍 Find duplicates", width=170, height
               fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
               command=open_duplicates_window).pack(side="left", padx=5)
 
-theme_frame = ctk.CTkFrame(master=app, fg_color="transparent")
-theme_frame.pack(pady=5)
-
-theme_button = ctk.CTkButton(master=theme_frame, text="☀️ Light mode", width=345, height=35,
-                              corner_radius=8, fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER,
-                              font=("Arial", 13), command=toggle_theme)
-theme_button.pack(side="left", padx=5)
-
 bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 bottom_frame.pack(pady=5)
 
@@ -1305,8 +1453,14 @@ ctk.CTkButton(master=bottom_frame, text="🗑️ Clear all", width=170, height=3
               fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, font=("Arial", 13),
               command=clear_all_contacts_window).pack(side="left", padx=5)
 
+settings_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+settings_frame.pack(pady=5)
+
+ctk.CTkButton(master=settings_frame, text="⚙️ Settings", width=345, height=35, corner_radius=8,
+              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+              command=open_settings_window).pack(side="left", padx=5)
+
 update_password_button_text()
-update_theme_button_text()
 
 if password_is_set:
     show_lock_screen(show_all_contacts)
