@@ -414,18 +414,64 @@ def mark_contact_opened(name):
     del recent[MAX_RECENT_ITEMS:]
     save_recent()
 
+def animate_row_in(row, target_height=38, step=4, delay=12):
+    """Плавно увеличивает высоту строки от 0 до target_height."""
+    current = [0]
+
+    def _step():
+        current[0] = min(current[0] + step, target_height)
+        try:
+            row.configure(height=current[0])
+        except Exception:
+            return
+        if current[0] < target_height:
+            row.after(delay, _step)
+
+    row.configure(height=0)
+    row.after(delay, _step)
+
+def animate_row_out(row, on_done, current_height=38, step=4, delay=12):
+    """Плавно уменьшает высоту строки до 0, затем вызывает on_done()."""
+    current = [current_height]
+
+    def _step():
+        current[0] = max(current[0] - step, 0)
+        try:
+            row.configure(height=current[0])
+        except Exception:
+            on_done()
+            return
+        if current[0] > 0:
+            row.after(delay, _step)
+        else:
+            on_done()
+
+    row.after(delay, _step)
+
 
 def delete_contact(name, refresh_callback):
     def do_delete():
-        del contacts[name]
-        if name in favorites:
-            favorites.remove(name)
-            save_favorites()
-        recent[:] = [r for r in recent if r["name"] != name]
-        save_recent()
-        save_contacts()
-        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
-        refresh_callback()
+        target_row = None
+        for widget in contacts_frame.winfo_children():
+            if hasattr(widget, "_contact_name") and widget._contact_name == name:
+                target_row = widget
+                break
+
+        def finish_delete():
+            del contacts[name]
+            if name in favorites:
+                favorites.remove(name)
+                save_favorites()
+            recent[:] = [r for r in recent if r["name"] != name]
+            save_recent()
+            save_contacts()
+            contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+            refresh_callback()
+
+        if target_row is not None:
+            animate_row_out(target_row, finish_delete)
+        else:
+            finish_delete()
 
     confirm_dialog(f"Delete contact '{name}'?", do_delete)
 
@@ -433,6 +479,7 @@ def delete_contact(name, refresh_callback):
 def render_contact_row(parent, name, phones_text, category, note, created_at,
                         refresh_callback, highlight=False):
     row = ctk.CTkFrame(master=parent, fg_color="transparent")
+    row._contact_name = name  # метка для поиска при анимации удаления
     row.pack(fill="x", padx=5, pady=3)
 
     prefix = "⭐ " if name in favorites else "👤 "
@@ -472,6 +519,9 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
 
     name_label.bind("<Button-1>", on_row_click)
 
+    # Запускаем анимацию появления строки
+    animate_row_in(row)
+
 
 def display_contacts(items, refresh_callback, highlight=False, empty_message=None):
     for widget in contacts_frame.winfo_children():
@@ -482,10 +532,15 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
                      text_color="gray").pack(pady=20)
         return
 
-    for name, data in items:
-        render_contact_row(contacts_frame, name, all_phones_text(data), data.get("category", "Other"),
-                            data.get("note", ""), data.get("created_at", time.time()),
-                            refresh_callback, highlight)
+    # Рендерим строки с нарастающей задержкой для эффекта «каскада»
+    for index, (name, data) in enumerate(items):
+        def _render(n=name, d=data, i=index):
+            render_contact_row(
+                contacts_frame, n, all_phones_text(d), d.get("category", "Other"),
+                d.get("note", ""), d.get("created_at", time.time()),
+                refresh_callback, highlight
+            )
+        contacts_frame.after(index * 30, _render)
 
 
 def get_filtered_items():
