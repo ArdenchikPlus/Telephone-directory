@@ -225,7 +225,6 @@ def migrate_contacts(raw_contacts):
             }
     return migrated
 
-
 def primary_phone(data):
     phones = data.get("phones", [])
     if phones:
