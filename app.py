@@ -70,6 +70,250 @@ COLOR_DANGER_HOVER = "#b83b26"
 COLOR_GRAY = "gray"
 COLOR_GRAY_HOVER = "#555555"
 
+ROW_TARGET_HEIGHT = 38
+
+# ---------------------------------------------------------------------------
+# Универсальные хелперы анимации.
+# В CTk/Tkinter нет встроенного движка анимации — всё ниже сделано через
+# .after() с ручной интерполяцией и easing (плавное замедление к концу),
+# чтобы не выглядело дёргано.
+# ---------------------------------------------------------------------------
+
+def ease_out_cubic(t):
+    """t от 0 до 1 -> плавное замедление к концу движения."""
+    return 1 - (1 - t) ** 3
+
+
+def _hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _rgb_to_hex(rgb):
+    return "#{:02x}{:02x}{:02x}".format(
+        max(0, min(255, int(rgb[0]))),
+        max(0, min(255, int(rgb[1]))),
+        max(0, min(255, int(rgb[2]))),
+    )
+
+
+def _lerp_color(hex_a, hex_b, t):
+    a = _hex_to_rgb(hex_a)
+    b = _hex_to_rgb(hex_b)
+    return _rgb_to_hex(tuple(a[i] + (b[i] - a[i]) * t for i in range(3)))
+
+
+# Именованные tkinter-цвета ("gray" и т.п.) не парсятся как hex напрямую.
+_NAMED_COLOR_FALLBACK = {
+    "gray": "#808080",
+}
+
+
+def _safe_hex(color):
+    if isinstance(color, str) and color.startswith("#"):
+        return color
+    return _NAMED_COLOR_FALLBACK.get(color, "#808080")
+
+
+def animate_button_hover(button, base_color, hover_color, press_color=None, duration_ms=130):
+    """
+    Плавная подсветка кнопки на hover/press вместо мгновенной смены fg_color.
+    base_color / hover_color — обычные fg_color/hover_color кнопки.
+    На зажатии (ButtonPress) идём чуть темнее hover_color, чтобы клик
+    ощущался как отдельный шаг, а не просто "осталось как при hover".
+    """
+    base_hex = _safe_hex(base_color)
+    hover_hex = _safe_hex(hover_color)
+    if press_color is not None:
+        press_hex = _safe_hex(press_color)
+    else:
+        press_rgb = tuple(c * 0.82 for c in _hex_to_rgb(hover_hex))
+        press_hex = _rgb_to_hex(press_rgb)
+
+    job = {"id": None}
+
+    def _animate_to(target_hex):
+        if job["id"] is not None:
+            try:
+                button.after_cancel(job["id"])
+            except Exception:
+                pass
+            job["id"] = None
+
+        try:
+            start_hex = _safe_hex(button.cget("fg_color"))
+        except Exception:
+            start_hex = base_hex
+
+        start_time = time.time()
+
+        def _step():
+            if not button.winfo_exists():
+                return
+            elapsed = time.time() - start_time
+            t = min(elapsed / (duration_ms / 1000), 1.0)
+            eased = ease_out_cubic(t)
+            try:
+                button.configure(fg_color=_lerp_color(start_hex, target_hex, eased))
+            except Exception:
+                return
+            if t < 1.0:
+                job["id"] = button.after(12, _step)
+            else:
+                job["id"] = None
+
+        _step()
+
+    button.bind("<Enter>", lambda e: _animate_to(hover_hex), add="+")
+    button.bind("<Leave>", lambda e: _animate_to(base_hex), add="+")
+    button.bind("<ButtonPress-1>", lambda e: _animate_to(press_hex), add="+")
+    button.bind("<ButtonRelease-1>", lambda e: _animate_to(hover_hex), add="+")
+
+
+def make_button(master, fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, **kwargs):
+    """
+    Обёртка над ctk.CTkButton: создаёт кнопку и сразу навешивает плавную
+    анимацию подсветки (hover/press) вместо мгновенной смены цвета.
+    Принимает все те же kwargs, что и CTkButton (text=, width=, command=...).
+    """
+    button = ctk.CTkButton(master=master, fg_color=fg_color, hover_color=hover_color, **kwargs)
+    animate_button_hover(button, fg_color, hover_color)
+    return button
+
+
+def shake_widget(widget, distance=8, cycles=3, duration_ms=260):
+    """
+    Горизонтальная "тряска" виджета — индикация ошибки валидации.
+    Виджет временно переключается с pack() на place() с колеблющимся x
+    (амплитуда затухает к концу), затем возвращается на исходный pack().
+    """
+    try:
+        manager = widget.winfo_manager()
+    except Exception:
+        return
+    if manager != "pack" or not widget.winfo_exists():
+        return
+
+    pack_info = widget.pack_info()
+    widget.update_idletasks()
+    start_x = widget.winfo_x()
+    start_y = widget.winfo_y()
+    width = widget.winfo_width()
+    height = widget.winfo_height()
+
+    widget.pack_forget()
+    widget.place(x=start_x, y=start_y, width=width, height=height)
+
+    total_steps = cycles * 2
+    step_duration = max(1, int(duration_ms / total_steps))
+
+    def _step(i=0):
+        if not widget.winfo_exists():
+            return
+        if i >= total_steps:
+            widget.place_forget()
+            widget.pack(**pack_info)
+            return
+        progress = i / total_steps
+        amplitude = distance * (1 - progress)
+        offset = amplitude if i % 2 == 0 else -amplitude
+        try:
+            widget.place_configure(x=start_x + offset)
+        except Exception:
+            widget.place_forget()
+            widget.pack(**pack_info)
+            return
+        widget.after(step_duration, lambda: _step(i + 1))
+
+    _step()
+
+
+def _parse_geometry(geo_str):
+    """'WxH+X+Y' -> ('WxH', X, Y)"""
+    size_part, _, pos_part = geo_str.partition("+")
+    x_str, _, y_str = pos_part.partition("+")
+    try:
+        return size_part, int(x_str or 0), int(y_str or 0)
+    except ValueError:
+        return size_part, 0, 0
+
+
+def fade_in_window(win, duration_ms=160, slide_from=16):
+    """
+    Плавное появление Toplevel-окна: fade по альфа-каналу + лёгкий slide
+    сверху вниз на последние slide_from пикселей. На платформах без
+    поддержки -alpha просто показываем окно как обычно, без анимации.
+    """
+    try:
+        win.update_idletasks()
+        geo = win.geometry()
+        size_part, x, y = _parse_geometry(geo)
+        start_y = y - slide_from
+        win.attributes("-alpha", 0.0)
+        win.geometry(f"{size_part}+{x}+{start_y}")
+    except Exception:
+        return
+
+    start_time = time.time()
+
+    def _step():
+        if not win.winfo_exists():
+            return
+        elapsed = time.time() - start_time
+        t = min(elapsed / (duration_ms / 1000), 1.0)
+        eased = ease_out_cubic(t)
+        try:
+            win.attributes("-alpha", eased)
+            current_y = int(start_y + (y - start_y) * eased)
+            win.geometry(f"{size_part}+{x}+{current_y}")
+        except Exception:
+            return
+        if t < 1.0:
+            win.after(12, _step)
+        else:
+            try:
+                win.geometry(f"{size_part}+{x}+{y}")
+            except Exception:
+                pass
+
+    win.after(8, _step)
+
+
+def pulse_success(button, success_color=COLOR_SUCCESS, duration_ms=260):
+    """
+    Короткая вспышка зелёным по кнопке как подтверждение успешного действия
+    (сохранили контакт, добавили в избранное и т.п.), затем плавный возврат
+    к исходному цвету.
+    """
+    try:
+        base_hex = _safe_hex(button.cget("fg_color"))
+    except Exception:
+        return
+    success_hex = _safe_hex(success_color)
+
+    try:
+        button.configure(fg_color=success_hex)
+    except Exception:
+        return
+
+    start_time = time.time()
+
+    def _step():
+        if not button.winfo_exists():
+            return
+        elapsed = time.time() - start_time
+        t = min(elapsed / (duration_ms / 1000), 1.0)
+        eased = ease_out_cubic(t)
+        try:
+            button.configure(fg_color=_lerp_color(success_hex, base_hex, eased))
+        except Exception:
+            return
+        if t < 1.0:
+            button.after(12, _step)
+
+    button.after(140, _step)
+
+
 
 def _xor_bytes(data: bytes, key: str) -> bytes:
     key_bytes = key.encode("utf-8")
@@ -165,7 +409,10 @@ app_settings = load_settings()
 secret_data = load_secret()
 password_is_set = bool(secret_data["password"])
 
-current_key = "" if not password_is_set else None
+# ИСПРАВЛЕНО: раньше current_key был None, если пароль установлен, что приводило
+# к падению encrypt_data/decrypt_data (None.encode) при любой случайной попытке
+# сохранить/прочитать данные до разблокировки. Теперь всегда строка.
+current_key = "" if not password_is_set else ""
 contacts = {}
 favorites = []
 recent = []
@@ -277,6 +524,7 @@ def make_toplevel(title, size, parent=None):
     win.geometry(size)
     win.resizable(False, False)
     win.attributes("-topmost", True)
+    fade_in_window(win)
     return win
 
 
@@ -292,9 +540,9 @@ def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
         on_confirm()
         win.destroy()
 
-    ctk.CTkButton(master=btn_frame, text="Yes", width=80, fg_color=COLOR_DANGER,
+    make_button(master=btn_frame, text="Yes", width=80, fg_color=COLOR_DANGER,
                   hover_color=COLOR_DANGER_HOVER, command=yes).pack(side="left", padx=10)
-    ctk.CTkButton(master=btn_frame, text="No", width=80, fg_color=COLOR_GRAY,
+    make_button(master=btn_frame, text="No", width=80, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, command=win.destroy).pack(side="left", padx=10)
     return win
 
@@ -339,12 +587,13 @@ def open_edit_window(name, refresh_callback):
         def remove_row():
             if len(phone_rows) <= 1:
                 error_label.configure(text="At least one number is required!", text_color="red")
+                shake_widget(error_label)
                 return
             phone_rows.remove(entry_tuple)
             row.destroy()
             resize_window()
 
-        remove_btn = ctk.CTkButton(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
+        remove_btn = make_button(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
                                     hover_color=COLOR_DANGER_HOVER, font=("Arial", 11),
                                     command=lambda: remove_row())
         remove_btn.pack(side="left", padx=(0, 8), pady=8)
@@ -359,7 +608,7 @@ def open_edit_window(name, refresh_callback):
         add_phone_row()
         resize_window()
 
-    ctk.CTkButton(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
+    make_button(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
                   command=add_new_row).pack(pady=(0, 10))
 
@@ -381,11 +630,13 @@ def open_edit_window(name, refresh_callback):
                 continue
             if not number.isdigit():
                 error_label.configure(text="Numbers must consist of digits!", text_color="red")
+                shake_widget(error_label)
                 return
             new_phones.append({"label": label_var.get(), "number": number})
 
         if not new_phones:
             error_label.configure(text="Add at least one phone number!", text_color="red")
+            shake_widget(error_label)
             return
 
         new_note = note_box.get("1.0", "end").strip()
@@ -400,7 +651,7 @@ def open_edit_window(name, refresh_callback):
         refresh_callback()
         win.destroy()
 
-    ctk.CTkButton(master=win, text="Save", width=150, height=35, corner_radius=8,
+    make_button(master=win, text="Save", width=150, height=35, corner_radius=8,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=save_edit).pack(pady=8)
 
@@ -413,8 +664,24 @@ def mark_contact_opened(name):
     del recent[MAX_RECENT_ITEMS:]
     save_recent()
 
-def animate_row_in(row, target_height=38, step=4, delay=12):
+
+# ИСПРАВЛЕНО: главная причина "анимация не работает".
+# CTkFrame, упакованный с fill="x", по умолчанию сам подгоняет свою высоту под
+# содержимое (как обычный tkinter pack geometry manager) — вызов .configure(height=...)
+# на таком фрейме НИЧЕГО не даёт, потому что pack_propagate (geometry propagation)
+# включен и Tk пересчитывает реальный размер по детям при каждом обновлении.
+# Чтобы анимация высоты реально работала, нужно:
+#   1) явно задать row.configure(height=...)
+#   2) отключить pack_propagate(False), чтобы Tk не переопределял высоту по контенту
+# Также раньше при анимации "в" внутренние виджеты (label/buttons) уже были
+# упакованы внутри row ДО первого вызова _step(), поэтому даже при height=0
+# содержимое требовало больше места и Tk всё равно растягивал строку.
+# Решение: создаём строку с pack_propagate(False) сразу с нужной итоговой высотой
+# для анимации "уход", а для анимации "появление" сначала схлопываем именно
+# контейнер-обёртку, а не сам row с контентом.
+def animate_row_in(row, target_height=ROW_TARGET_HEIGHT, step=4, delay=12):
     """Плавно увеличивает высоту строки от 0 до target_height."""
+    row.pack_propagate(False)
     current = [0]
 
     def _step():
@@ -429,8 +696,10 @@ def animate_row_in(row, target_height=38, step=4, delay=12):
     row.configure(height=0)
     row.after(delay, _step)
 
-def animate_row_out(row, on_done, current_height=38, step=4, delay=12):
+
+def animate_row_out(row, on_done, current_height=ROW_TARGET_HEIGHT, step=4, delay=12):
     """Плавно уменьшает высоту строки до 0, затем вызывает on_done()."""
+    row.pack_propagate(False)
     current = [current_height]
 
     def _step():
@@ -492,11 +761,11 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
     if note:
         display_text += " 📝"
 
-    ctk.CTkButton(master=row, text="✏️", width=30, height=25, fg_color=COLOR_PRIMARY,
+    make_button(master=row, text="✏️", width=30, height=25, fg_color=COLOR_PRIMARY,
                   hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 10, "bold"),
                   command=lambda: open_edit_window(name, refresh_callback)).pack(side="right", padx=5)
 
-    ctk.CTkButton(master=row, text="❌", width=30, height=25, fg_color=COLOR_DANGER,
+    make_button(master=row, text="❌", width=30, height=25, fg_color=COLOR_DANGER,
                   hover_color=COLOR_DANGER_HOVER, font=("Arial", 10, "bold"),
                   command=lambda: delete_contact(name, refresh_callback)).pack(side="right", padx=5)
 
@@ -577,7 +846,7 @@ def search_contact():
         display_contacts(base_items, search_contact, empty_message="No contacts in this category")
         return
 
-    def contact_matches(data):
+    def contact_matches(data, name_lower):
         if query in name_lower:
             return True
         for p in data.get("phones", []):
@@ -588,7 +857,7 @@ def search_contact():
     matches = []
     for n, d in base_items:
         name_lower = n.lower()
-        if contact_matches(d):
+        if contact_matches(d, name_lower):
             matches.append((n, d))
     display_contacts(matches, search_contact, highlight=True, empty_message="Nothing found")
 
@@ -597,7 +866,7 @@ def open_add_contact_window():
     base_height = 460
     row_height = 46
 
-    win = make_toplevel("Add a contact", f"360x{base_height + row_height}")
+    win = make_toplevel("Add a contact", f"360x{base_height}")
 
     ctk.CTkLabel(master=win, text="New contact", font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
@@ -617,7 +886,7 @@ def open_add_contact_window():
     phone_rows = []
 
     def resize_window():
-        win.geometry(f"360x{base_height + row_height * len(phone_rows)}")
+        win.geometry(f"360x{base_height + row_height * (len(phone_rows) - 1)}")
 
     def add_phone_row(label="Mobile", number=""):
         row = ctk.CTkFrame(master=phones_frame, corner_radius=8)
@@ -634,12 +903,13 @@ def open_add_contact_window():
         def remove_row():
             if len(phone_rows) <= 1:
                 error_label.configure(text="At least one number is required!", text_color="red")
+                shake_widget(error_label)
                 return
             phone_rows.remove(entry_tuple)
             row.destroy()
             resize_window()
 
-        remove_btn = ctk.CTkButton(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
+        remove_btn = make_button(master=row, text="🗑️", width=32, height=28, fg_color=COLOR_DANGER,
                                     hover_color=COLOR_DANGER_HOVER, font=("Arial", 11),
                                     command=lambda: remove_row())
         remove_btn.pack(side="left", padx=(0, 8), pady=8)
@@ -653,7 +923,7 @@ def open_add_contact_window():
         add_phone_row()
         resize_window()
 
-    ctk.CTkButton(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
+    make_button(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
                   command=add_new_row).pack(pady=(0, 10))
 
@@ -671,9 +941,11 @@ def open_add_contact_window():
 
         if not name:
             error_label.configure(text="Please fill in the name!", text_color="red")
+            shake_widget(error_label)
             return
         if name in contacts:
             error_label.configure(text="This contact name already exists! ⚠️", text_color="yellow")
+            shake_widget(error_label)
             return
 
         new_phones = []
@@ -683,11 +955,13 @@ def open_add_contact_window():
                 continue
             if not number.isdigit():
                 error_label.configure(text="Numbers must consist of digits!", text_color="red")
+                shake_widget(error_label)
                 return
             new_phones.append({"label": label_var.get(), "number": number})
 
         if not new_phones:
             error_label.configure(text="Add at least one phone number!", text_color="red")
+            shake_widget(error_label)
             return
 
         note = note_box.get("1.0", "end").strip()
@@ -699,11 +973,16 @@ def open_add_contact_window():
             "usage_count": 0,
         }
         save_contacts()
-        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
-        show_all_contacts()
         win.destroy()
+        # ИСПРАВЛЕНО: раньше тут вручную выставлялся label_text и вызывался
+        # show_all_contacts(), который ИГНОРИРУЕТ текущий поиск/фильтр и всегда
+        # показывает все контакты. Если пользователь до этого что-то искал или
+        # выбрал категорию, новый контакт "терялся" из вида, и казалось,
+        # что добавление не сработало. Теперь обновляем через search_contact(),
+        # которая учитывает текущий фильтр/сортировку/поиск.
+        search_contact()
 
-    ctk.CTkButton(master=win, text="Save", width=150, height=35, corner_radius=8,
+    make_button(master=win, text="Save", width=150, height=35, corner_radius=8,
                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                   command=save_new_contact).pack(pady=8)
 
@@ -743,7 +1022,7 @@ def open_favorites_window():
                 refresh_fav_list()
                 show_all_contacts()
 
-            ctk.CTkButton(master=row, text="🗑️", width=30, height=25, fg_color=COLOR_DANGER,
+            make_button(master=row, text="🗑️", width=30, height=25, fg_color=COLOR_DANGER,
                           hover_color=COLOR_DANGER_HOVER, font=("Arial", 10),
                           command=remove_fav).pack(side="right", padx=5)
 
@@ -757,11 +1036,13 @@ def open_favorites_window():
         if not matches:
             fav_entry.delete(0, "end")
             fav_entry.configure(placeholder_text="No new matches found!", placeholder_text_color="red")
+            shake_widget(fav_entry)
             return
 
         if len(matches) > 1:
             fav_entry.delete(0, "end")
             fav_entry.configure(placeholder_text="Multiple found! Be more specific.", placeholder_text_color="yellow")
+            shake_widget(fav_entry)
             return
 
         name_to_add = matches[0]
@@ -776,7 +1057,7 @@ def open_favorites_window():
 
         confirm_dialog(f"Add '{name_to_add}' to favorites?", confirm_add, parent=fav_window)
 
-    ctk.CTkButton(master=fav_window, text="Add to favorites", width=150, height=30, fg_color=COLOR_PRIMARY,
+    make_button(master=fav_window, text="Add to favorites", width=150, height=30, fg_color=COLOR_PRIMARY,
                   command=add_to_fav).pack(pady=5)
 
     refresh_fav_list()
@@ -820,7 +1101,7 @@ def open_recent_window():
             ctk.CTkLabel(master=text_col, text=f"Opened {when}", font=("Arial", 10),
                          text_color="gray", anchor="w").pack(anchor="w", fill="x")
 
-            ctk.CTkButton(master=row, text="🗑️", width=30, height=25, fg_color=COLOR_DANGER,
+            make_button(master=row, text="🗑️", width=30, height=25, fg_color=COLOR_DANGER,
                           hover_color=COLOR_DANGER_HOVER, font=("Arial", 10),
                           command=lambda n=name: remove_recent(n)).pack(side="right", padx=5)
 
@@ -837,7 +1118,7 @@ def open_recent_window():
 
         confirm_dialog("Clear recent history?", do_clear, parent=rec_window, title="Clear Recent")
 
-    ctk.CTkButton(master=rec_window, text="Clear history", width=150, height=30, fg_color=COLOR_GRAY,
+    make_button(master=rec_window, text="Clear history", width=150, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, command=clear_recent).pack(pady=5)
 
     refresh_recent_list()
@@ -1015,7 +1296,7 @@ def open_duplicates_window():
                     confirmed, parent=win, title="Merge contacts"
                 )
 
-            ctk.CTkButton(master=card, text="Merge into one", width=150, height=28,
+            make_button(master=card, text="Merge into one", width=150, height=28,
                           fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                           font=("Arial", 12), command=do_merge).pack(pady=(8, 10))
 
@@ -1107,10 +1388,10 @@ def import_contacts_from_file(parent=None):
         confirm_dialog("This will delete your current contacts and replace them. Continue?",
                        really_replace, parent=choice_win, title="Replace all")
 
-    ctk.CTkButton(master=choice_win, text="Merge with existing", width=220, height=35,
+    make_button(master=choice_win, text="Merge with existing", width=220, height=35,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=confirm_merge).pack(pady=5)
-    ctk.CTkButton(master=choice_win, text="Replace all contacts", width=220, height=35,
+    make_button(master=choice_win, text="Replace all contacts", width=220, height=35,
                   fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
                   command=confirm_replace).pack(pady=5)
 
@@ -1188,11 +1469,11 @@ def open_settings_window():
     ctk.CTkLabel(master=data_section, text="Backup & restore", font=("Arial", 13, "bold")).pack(
         anchor="w", padx=12, pady=(10, 8))
 
-    ctk.CTkButton(master=data_section, text="⬇️ Export contacts to JSON", width=260, height=35,
+    make_button(master=data_section, text="⬇️ Export contacts to JSON", width=260, height=35,
                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                   command=export_contacts_to_file).pack(padx=12, pady=(0, 8))
 
-    ctk.CTkButton(master=data_section, text="⬆️ Import contacts from JSON", width=260, height=35,
+    make_button(master=data_section, text="⬆️ Import contacts from JSON", width=260, height=35,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=lambda: import_contacts_from_file(win)).pack(padx=12, pady=(0, 12))
 
@@ -1234,6 +1515,7 @@ def open_set_password_window(parent=None):
         hint = hint_entry.get().strip()
         if not entered:
             error_label.configure(text="Password cannot be empty!", text_color="red")
+            shake_widget(pass_entry)
             return
 
         old_key = current_key if current_key else ""
@@ -1247,7 +1529,7 @@ def open_set_password_window(parent=None):
         update_password_button_text()
         win.destroy()
 
-    ctk.CTkButton(master=win, text="Confirm", width=150, fg_color=COLOR_SUCCESS,
+    make_button(master=win, text="Confirm", width=150, fg_color=COLOR_SUCCESS,
                   hover_color=COLOR_SUCCESS_HOVER, command=confirm_set_password).pack(pady=15)
     pass_entry.bind("<Return>", lambda event: confirm_set_password())
     pass_entry.focus()
@@ -1278,7 +1560,7 @@ def open_forgot_password_window(parent):
         else:
             result_label.configure(text="Incorrect hint answer!", text_color="red")
 
-    ctk.CTkButton(master=win, text="Check", width=150, fg_color=COLOR_PRIMARY,
+    make_button(master=win, text="Check", width=150, fg_color=COLOR_PRIMARY,
                   hover_color=COLOR_PRIMARY_HOVER, command=check_hint).pack(pady=10)
     hint_entry.bind("<Return>", lambda event: check_hint())
     hint_entry.focus()
@@ -1313,15 +1595,15 @@ def open_password_window():
 
     ctk.CTkLabel(master=win, text="🔐 Manage Password", font=("Arial", 18, "bold")).pack(pady=20)
 
-    ctk.CTkButton(master=win, text="Change password", width=220, height=38, corner_radius=8,
+    make_button(master=win, text="Change password", width=220, height=38, corner_radius=8,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=lambda: open_set_password_window(win)).pack(pady=8)
 
-    ctk.CTkButton(master=win, text="Reset password", width=220, height=38, corner_radius=8,
+    make_button(master=win, text="Reset password", width=220, height=38, corner_radius=8,
                   fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
                   command=lambda: open_reset_password_window(win)).pack(pady=8)
 
-    ctk.CTkButton(master=win, text="Forgot password?", width=220, height=38, corner_radius=8,
+    make_button(master=win, text="Forgot password?", width=220, height=38, corner_radius=8,
                   fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER,
                   command=lambda: open_forgot_password_window(win)).pack(pady=8)
 
@@ -1333,6 +1615,7 @@ def show_lock_screen(on_success):
     win.resizable(False, False)
     win.attributes("-topmost", True)
     win.protocol("WM_DELETE_WINDOW", lambda: sys.exit(0))
+    fade_in_window(win)
 
     ctk.CTkLabel(master=win, text="🔒 Enter Password", font=("Arial", 18, "bold")).pack(pady=20)
 
@@ -1342,10 +1625,10 @@ def show_lock_screen(on_success):
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
     error_label.pack(pady=5)
 
-    unlock_button = ctk.CTkButton(master=win, text="Unlock", width=150, command=lambda: try_unlock())
+    unlock_button = make_button(master=win, text="Unlock", width=150, command=lambda: try_unlock())
     unlock_button.pack(pady=10)
 
-    forgot_button = ctk.CTkButton(master=win, text="Forgot password?", width=180, fg_color=COLOR_GRAY,
+    forgot_button = make_button(master=win, text="Forgot password?", width=180, fg_color=COLOR_GRAY,
                                    hover_color=COLOR_GRAY_HOVER,
                                    command=lambda: open_forgot_password_window(win))
     forgot_button.pack(pady=10)
@@ -1396,6 +1679,7 @@ def show_lock_screen(on_success):
             failed_attempts += 1
             remaining_tries = MAX_LOGIN_ATTEMPTS - failed_attempts
             pass_entry.delete(0, "end")
+            shake_widget(pass_entry)
             if remaining_tries <= 0:
                 start_lockout()
             else:
@@ -1475,41 +1759,41 @@ contacts_frame.pack(pady=20)
 btn_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 btn_frame.pack(pady=10)
 
-ctk.CTkButton(master=btn_frame, text="Add contact", width=170, height=40, corner_radius=8,
+make_button(master=btn_frame, text="Add contact", width=170, height=40, corner_radius=8,
               fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER, font=("Arial", 14, "bold"),
               command=open_add_contact_window).pack(side="left", padx=5)
 
-ctk.CTkButton(master=btn_frame, text="Favorites", width=170, height=40, corner_radius=8,
+make_button(master=btn_frame, text="Favorites", width=170, height=40, corner_radius=8,
               fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 14, "bold"),
               command=open_favorites_window).pack(side="left", padx=5)
 
 extra_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 extra_frame.pack(pady=5)
 
-ctk.CTkButton(master=extra_frame, text="🕘 Recent", width=170, height=35, corner_radius=8,
+make_button(master=extra_frame, text="🕘 Recent", width=170, height=35, corner_radius=8,
               fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
               command=open_recent_window).pack(side="left", padx=5)
 
-ctk.CTkButton(master=extra_frame, text="🔍 Find duplicates", width=170, height=35, corner_radius=8,
+make_button(master=extra_frame, text="🔍 Find duplicates", width=170, height=35, corner_radius=8,
               fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
               command=open_duplicates_window).pack(side="left", padx=5)
 
 bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 bottom_frame.pack(pady=5)
 
-password_button = ctk.CTkButton(master=bottom_frame, text="🔐 Password", width=170, height=35, corner_radius=8,
+password_button = make_button(master=bottom_frame, text="🔐 Password", width=170, height=35, corner_radius=8,
                                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
                                  command=open_password_window)
 password_button.pack(side="left", padx=5)
 
-ctk.CTkButton(master=bottom_frame, text="🗑️ Clear all", width=170, height=35, corner_radius=8,
+make_button(master=bottom_frame, text="🗑️ Clear all", width=170, height=35, corner_radius=8,
               fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, font=("Arial", 13),
               command=clear_all_contacts_window).pack(side="left", padx=5)
 
 settings_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 settings_frame.pack(pady=5)
 
-ctk.CTkButton(master=settings_frame, text="⚙️ Settings", width=345, height=35, corner_radius=8,
+make_button(master=settings_frame, text="⚙️ Settings", width=345, height=35, corner_radius=8,
               fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
               command=open_settings_window).pack(side="left", padx=5)
 
