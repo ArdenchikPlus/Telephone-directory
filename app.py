@@ -106,13 +106,32 @@ def _lerp_color(hex_a, hex_b, t):
 # Именованные tkinter-цвета ("gray" и т.п.) не парсятся как hex напрямую.
 _NAMED_COLOR_FALLBACK = {
     "gray": "#808080",
+    "transparent": "#2b2b2b",
 }
 
 
 def _safe_hex(color):
+    """
+    Приводит цвет CTk к одному hex-значению.
+
+    КРИТИЧНО: CTkButton.cget("fg_color") часто возвращает не строку, а
+    tuple вида (цвет_для_светлой_темы, цвет_для_тёмной_темы) — так CTk
+    хранит цвета, зависящие от режима оформления. Старая версия этой
+    функции не учитывала tuple и в этом случае тихо подставляла серый
+    дефолт (#808080) вместо реального цвета — анимация формально работала,
+    но "доезжала" в неправильный, малозаметный цвет, что выглядело как
+    "подсветка не работает".
+    """
+    if isinstance(color, (tuple, list)):
+        # берём цвет, соответствующий текущему режиму темы
+        mode = ctk.get_appearance_mode()  # "Light" или "Dark"
+        index = 1 if mode == "Dark" and len(color) > 1 else 0
+        color = color[index]
+
     if isinstance(color, str) and color.startswith("#"):
         return color
-    return _NAMED_COLOR_FALLBACK.get(color, "#808080")
+
+    return _NAMED_COLOR_FALLBACK.get(color, "#1f6aa5")
 
 
 def animate_button_hover(button, base_color, hover_color, press_color=None, duration_ms=130):
@@ -172,11 +191,20 @@ def animate_button_hover(button, base_color, hover_color, press_color=None, dura
 
 def make_button(master, fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, **kwargs):
     """
-    Обёртка над ctk.CTkButton: создаёт кнопку и сразу навешивает плавную
-    анимацию подсветки (hover/press) вместо мгновенной смены цвета.
-    Принимает все те же kwargs, что и CTkButton (text=, width=, command=...).
+    Обёртка над ctk.CTkButton: создаёт кнопку и навешивает плавную анимацию
+    подсветки (hover/press) ВМЕСТО встроенной в CTk.
+
+    ВАЖНО: у CTkButton есть собственный встроенный hover-эффект — он сам
+    биндит <Enter>/<Leave> и мгновенно подменяет fg_color на hover_color.
+    Если просто добавить свои бинды поверх (bind(..., add="+")), оба
+    обработчика выполняются, и встроенный мгновенный эффект забивает нашу
+    плавную анимацию — снаружи это выглядит так, будто анимация не работает.
+    Поэтому здесь встроенный hover отключается явно через hover=False,
+    и подсветкой целиком управляет animate_button_hover().
     """
-    button = ctk.CTkButton(master=master, fg_color=fg_color, hover_color=hover_color, **kwargs)
+    button = ctk.CTkButton(
+        master=master, fg_color=fg_color, hover_color=hover_color, hover=False, **kwargs
+    )
     animate_button_hover(button, fg_color, hover_color)
     return button
 
@@ -228,30 +256,45 @@ def shake_widget(widget, distance=8, cycles=3, duration_ms=260):
     _step()
 
 
-def _parse_geometry(geo_str):
-    """'WxH+X+Y' -> ('WxH', X, Y)"""
-    size_part, _, pos_part = geo_str.partition("+")
-    x_str, _, y_str = pos_part.partition("+")
-    try:
-        return size_part, int(x_str or 0), int(y_str or 0)
-    except ValueError:
-        return size_part, 0, 0
-
-
-def fade_in_window(win, duration_ms=160, slide_from=16):
+def fade_in_window(win, target_size=None, duration_ms=220):
     """
-    Плавное появление Toplevel-окна: fade по альфа-каналу + лёгкий slide
-    сверху вниз на последние slide_from пикселей. На платформах без
-    поддержки -alpha просто показываем окно как обычно, без анимации.
+    Плавное появление Toplevel-окна: fade по альфа-каналу + лёгкое
+    "вырастание" окна из ~88% целевого размера до 100%.
+
+    ВАЖНО про позицию: предыдущая версия дополнительно сдвигала окно по Y
+    (slide), читая текущую geometry() сразу после создания окна. Но
+    geometry() в этот момент часто ещё не отражает позицию, которую
+    назначит оконный менеджер (на многих Linux WM позиция применяется
+    асинхронно, чуть позже). Из-за этого слайд либо дёргался, либо
+    анимировал "0 -> 0" и был незаметен.
+
+    Здесь вместо позиции анимируется РАЗМЕР окна, который мы полностью
+    контролируем и который не зависит от поведения WM — эффект гарантированно
+    виден независимо от платформы. target_size — строка "WxH" (та же, что
+    передаётся в geometry()); если не передана, размер не анимируется,
+    остаётся только fade.
+
+    Если платформа не поддерживает -alpha (бывает на части Linux WM без
+    композитора), окно показывается как обычно, без анимации, без ошибок.
     """
     try:
-        win.update_idletasks()
-        geo = win.geometry()
-        size_part, x, y = _parse_geometry(geo)
-        start_y = y - slide_from
         win.attributes("-alpha", 0.0)
-        win.geometry(f"{size_part}+{x}+{start_y}")
+        alpha_supported = True
     except Exception:
+        alpha_supported = False
+
+    width, height, start_w, start_h = None, None, None, None
+    if target_size:
+        try:
+            w_str, h_str = target_size.lower().split("x")
+            width, height = int(w_str), int(h_str)
+            start_w = int(width * 0.88)
+            start_h = int(height * 0.88)
+            win.geometry(f"{start_w}x{start_h}")
+        except Exception:
+            width = height = start_w = start_h = None
+
+    if not alpha_supported and width is None:
         return
 
     start_time = time.time()
@@ -263,20 +306,29 @@ def fade_in_window(win, duration_ms=160, slide_from=16):
         t = min(elapsed / (duration_ms / 1000), 1.0)
         eased = ease_out_cubic(t)
         try:
-            win.attributes("-alpha", eased)
-            current_y = int(start_y + (y - start_y) * eased)
-            win.geometry(f"{size_part}+{x}+{current_y}")
+            if alpha_supported:
+                win.attributes("-alpha", eased)
+            if width is not None:
+                cur_w = int(start_w + (width - start_w) * eased)
+                cur_h = int(start_h + (height - start_h) * eased)
+                win.geometry(f"{cur_w}x{cur_h}")
         except Exception:
             return
         if t < 1.0:
-            win.after(12, _step)
+            win.after(14, _step)
         else:
             try:
-                win.geometry(f"{size_part}+{x}+{y}")
+                if alpha_supported:
+                    win.attributes("-alpha", 1.0)
+                if width is not None:
+                    win.geometry(f"{width}x{height}")
             except Exception:
                 pass
 
-    win.after(8, _step)
+    # Небольшая задержка перед первым кадром — даёт оконному менеджеру
+    # время отрисовать окно с alpha=0/уменьшенным размером ДО начала
+    # анимации, иначе на части систем первый кадр проскакивает мгновенно.
+    win.after(30, _step)
 
 
 def pulse_success(button, success_color=COLOR_SUCCESS, duration_ms=260):
@@ -524,7 +576,7 @@ def make_toplevel(title, size, parent=None):
     win.geometry(size)
     win.resizable(False, False)
     win.attributes("-topmost", True)
-    fade_in_window(win)
+    fade_in_window(win, target_size=size)
     return win
 
 
@@ -1615,7 +1667,7 @@ def show_lock_screen(on_success):
     win.resizable(False, False)
     win.attributes("-topmost", True)
     win.protocol("WM_DELETE_WINDOW", lambda: sys.exit(0))
-    fade_in_window(win)
+    fade_in_window(win, target_size="340x360")
 
     ctk.CTkLabel(master=win, text="🔒 Enter Password", font=("Arial", 18, "bold")).pack(pady=20)
 
