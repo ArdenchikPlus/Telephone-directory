@@ -1479,7 +1479,7 @@ def set_dup_threshold(level):
 
 
 def open_settings_window():
-    win = make_toplevel("Settings", "380x520")
+    win = make_toplevel("Settings", "380x660")
 
     ctk.CTkLabel(master=win, text="⚙️ Settings", font=("Arial", 18, "bold")).pack(pady=(20, 15))
 
@@ -1528,6 +1528,26 @@ def open_settings_window():
     make_button(master=data_section, text="⬆️ Import contacts from JSON", width=260, height=35,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=lambda: import_contacts_from_file(win)).pack(padx=12, pady=(0, 12))
+
+    hotkeys_section = ctk.CTkFrame(master=win, corner_radius=8)
+    hotkeys_section.pack(fill="x", padx=20, pady=8)
+
+    ctk.CTkLabel(master=hotkeys_section, text="⌨️ Keyboard shortcuts", font=("Arial", 13, "bold")).pack(
+        anchor="w", padx=12, pady=(10, 8))
+
+    shortcuts = [
+        ("Ctrl + N", "Add a new contact"),
+        ("Ctrl + F", "Jump to the search field"),
+    ]
+
+    for keys, description in shortcuts:
+        row = ctk.CTkFrame(master=hotkeys_section, fg_color="transparent")
+        row.pack(fill="x", padx=12, pady=(0, 8))
+
+        ctk.CTkLabel(master=row, text=keys, font=("Arial", 12, "bold"), text_color="white",
+                     fg_color=COLOR_PRIMARY, corner_radius=6, width=90).pack(side="left")
+        ctk.CTkLabel(master=row, text=description, font=("Arial", 12), text_color="gray",
+                     anchor="w").pack(side="left", padx=(10, 0))
 
 
 def update_password_button_text():
@@ -1773,6 +1793,35 @@ search_entry = ctk.CTkEntry(master=app, placeholder_text="Enter a name or number
 search_entry.pack(pady=10)
 search_entry.bind("<KeyRelease>", lambda event: search_contact())
 
+# ---------------------------------------------------------------------------
+# Горячие клавиши.
+# Привязаны через app.bind(...) (не bind_all), поэтому они срабатывают
+# только когда фокус находится в главном окне — открытое модальное окно
+# (Toplevel) их не перехватит и не будет с ними конфликтовать.
+# Ctrl+N — открыть окно добавления нового контакта.
+# Ctrl+F — поставить курсор в поле поиска и выделить его текущее содержимое,
+# чтобы можно было сразу начать печатать новый запрос.
+# Биндим и нижний, и верхний регистр (Control-n / Control-N), так как при
+# зажатом Ctrl некоторые платформы определяют Shift независимо и присылают
+# заглавную букву даже без явного нажатия Shift.
+# ---------------------------------------------------------------------------
+
+def _focus_search(event=None):
+    search_entry.focus_set()
+    search_entry.select_range(0, "end")
+    return "break"
+
+
+def _open_new_contact_shortcut(event=None):
+    open_add_contact_window()
+    return "break"
+
+
+app.bind("<Control-n>", _open_new_contact_shortcut)
+app.bind("<Control-N>", _open_new_contact_shortcut)
+app.bind("<Control-f>", _focus_search)
+app.bind("<Control-F>", _focus_search)
+
 filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 filter_frame.pack(pady=5)
 
@@ -1818,6 +1867,9 @@ make_button(master=btn_frame, text="Add contact", width=170, height=40, corner_r
 make_button(master=btn_frame, text="Favorites", width=170, height=40, corner_radius=8,
               fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 14, "bold"),
               command=open_favorites_window).pack(side="left", padx=5)
+
+ctk.CTkLabel(master=app, text="Tip: Ctrl+N — new contact   ·   Ctrl+F — search",
+             font=("Arial", 10), text_color="gray").pack(pady=(0, 2))
 
 extra_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 extra_frame.pack(pady=5)
