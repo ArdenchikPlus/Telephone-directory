@@ -198,13 +198,24 @@ def make_button(master, fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
     биндит <Enter>/<Leave> и мгновенно подменяет fg_color на hover_color.
     Если просто добавить свои бинды поверх (bind(..., add="+")), оба
     обработчика выполняются, и встроенный мгновенный эффект забивает нашу
-    плавную анимацию — снаружи это выглядит так, будто анимация не работает.
-    Поэтому здесь встроенный hover отключается явно через hover=False,
-    и подсветкой целиком управляет animate_button_hover().
+    плавную анимацию. Поэтому встроенный hover отключается через hover=False.
+
+    ЗАЩИТА ОТ ВЕРСИЙ: параметр hover=False поддерживается современными
+    версиями customtkinter, но не гарантированно есть во всех. Если
+    конструктор не принимает hover (TypeError), создаём кнопку без этого
+    параметра — это означает, что встроенный hover-эффект CTk и наша
+    анимация будут работать одновременно (визуально это не страшно, просто
+    не идеально плавно), но ГЛАВНОЕ — приложение не упадёт целиком на самой
+    первой созданной кнопке.
     """
-    button = ctk.CTkButton(
-        master=master, fg_color=fg_color, hover_color=hover_color, hover=False, **kwargs
-    )
+    try:
+        button = ctk.CTkButton(
+            master=master, fg_color=fg_color, hover_color=hover_color, hover=False, **kwargs
+        )
+    except TypeError:
+        button = ctk.CTkButton(
+            master=master, fg_color=fg_color, hover_color=hover_color, **kwargs
+        )
     animate_button_hover(button, fg_color, hover_color)
     return button
 
@@ -797,7 +808,7 @@ def delete_contact(name, refresh_callback):
 
 
 def render_contact_row(parent, name, phones_text, category, note, created_at,
-                        refresh_callback, highlight=False):
+                        refresh_callback, highlight=False, animate=True):
     row = ctk.CTkFrame(master=parent, fg_color="transparent")
     row._contact_name = name  # метка для поиска при анимации удаления
     row.pack(fill="x", padx=5, pady=3)
@@ -839,11 +850,17 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
 
     name_label.bind("<Button-1>", on_row_click)
 
-    # Запускаем анимацию появления строки
-    animate_row_in(row)
+    # Анимация появления строки — только когда animate=True (первый показ
+    # списка при входе в приложение). При поиске/фильтрации/сортировке и
+    # любых других перерисовках animate=False, чтобы строки просто появлялись
+    # сразу в полную высоту без повторной анимации на каждое нажатие клавиши.
+    if animate:
+        animate_row_in(row)
+    else:
+        row.configure(height=ROW_TARGET_HEIGHT)
 
 
-def display_contacts(items, refresh_callback, highlight=False, empty_message=None):
+def display_contacts(items, refresh_callback, highlight=False, empty_message=None, animate=False):
     for widget in contacts_frame.winfo_children():
         widget.destroy()
 
@@ -852,15 +869,27 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
                      text_color="gray").pack(pady=20)
         return
 
-    # Рендерим строки с нарастающей задержкой для эффекта «каскада»
-    for index, (name, data) in enumerate(items):
-        def _render(n=name, d=data, i=index):
+    if animate:
+        # Рендерим строки с нарастающей задержкой для эффекта «каскада» —
+        # только при первом показе списка (вход в приложение).
+        for index, (name, data) in enumerate(items):
+            def _render(n=name, d=data, i=index):
+                render_contact_row(
+                    contacts_frame, n, all_phones_text(d), d.get("category", "Other"),
+                    d.get("note", ""), d.get("created_at", time.time()),
+                    refresh_callback, highlight, animate=True
+                )
+            contacts_frame.after(index * 30, _render)
+    else:
+        # Любая последующая перерисовка (поиск, фильтр, сортировка, после
+        # добавления/редактирования/удаления контакта) — без анимации и без
+        # каскадной задержки, строки появляются сразу в финальном виде.
+        for name, data in items:
             render_contact_row(
-                contacts_frame, n, all_phones_text(d), d.get("category", "Other"),
-                d.get("note", ""), d.get("created_at", time.time()),
-                refresh_callback, highlight
+                contacts_frame, name, all_phones_text(data), data.get("category", "Other"),
+                data.get("note", ""), data.get("created_at", time.time()),
+                refresh_callback, highlight, animate=False
             )
-        contacts_frame.after(index * 30, _render)
 
 
 def get_filtered_items():
@@ -889,6 +918,22 @@ def get_filtered_items():
 def show_all_contacts():
     contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
     display_contacts(get_filtered_items(), show_all_contacts, empty_message="No contacts in this category")
+
+
+def show_all_contacts_animated():
+    """
+    То же самое, что show_all_contacts(), но с анимацией появления строк
+    (плавное "выезжание" каждой строки по очереди). Используется только в
+    момент входа в приложение — сразу после запуска или после успешной
+    разблокировки паролем. Любое последующее обновление списка (поиск,
+    смена фильтра/сортировки, добавление/редактирование/удаление контакта,
+    импорт, merge дублей и т.п.) идёт через обычный show_all_contacts()/
+    search_contact() без анимации — иначе строки "выезжали" бы заново при
+    каждом действии пользователя, включая каждое нажатие клавиши при поиске.
+    """
+    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+    display_contacts(get_filtered_items(), show_all_contacts,
+                      empty_message="No contacts in this category", animate=True)
 
 
 def search_contact():
@@ -1795,32 +1840,68 @@ search_entry.bind("<KeyRelease>", lambda event: search_contact())
 
 # ---------------------------------------------------------------------------
 # Горячие клавиши.
-# Привязаны через app.bind(...) (не bind_all), поэтому они срабатывают
-# только когда фокус находится в главном окне — открытое модальное окно
-# (Toplevel) их не перехватит и не будет с ними конфликтовать.
-# Ctrl+N — открыть окно добавления нового контакта.
-# Ctrl+F — поставить курсор в поле поиска и выделить его текущее содержимое,
-# чтобы можно было сразу начать печатать новый запрос.
-# Биндим и нижний, и верхний регистр (Control-n / Control-N), так как при
-# зажатом Ctrl некоторые платформы определяют Shift независимо и присылают
-# заглавную букву даже без явного нажатия Shift.
+#
+# ПОЧЕМУ ПРЕДЫДУЩИЕ ВЕРСИИ НЕ РАБОТАЛИ:
+# Именованные event-последовательности вида "<Control-f>" в Tk обрабатываются
+# по системе bindtags с конкретным порядком: instance -> toplevel -> class ->
+# application. У Entry-виджетов (а CTkEntry использует обычный tkinter.Entry
+# внутри себя) на уровне КЛАССА встроены emacs-style биндинги именно на
+# "<Control-f>" / "<Control-n>" (наследие emacs/readline: "курсор вперёд",
+# "следующая строка"). Когда такой class-level бинд обрабатывает событие, он
+# может прервать дальнейшую передачу — и bind_all/app.bind на ту же именную
+# последовательность просто не вызывается. Попытка отвязать конфликт через
+# unbind_class тоже не помогла, так как она требует точного совпадения формы
+# события с тем, как он зарегистрирован внутри Tcl/Tk — это легко не совпадает.
+#
+# РЕШЕНИЕ — низкоуровневый, проверенный паттерн:
+# Вместо именованной последовательности "<Control-f>" слушаем общее событие
+# "<KeyPress>" через bind_all и сами проверяем event.state (битовая маска
+# модификаторов — бит 0x4 означает "зажат Control") и event.keysym (имя
+# клавиши). "<KeyPress>" — это ДРУГОЕ событие, отдельное от именованных
+# sequence-биндов вроде "<Control-f>", поэтому оно не конкурирует с
+# встроенными class-level биндами Entry и гарантированно доходит до нас
+# независимо от того, какой виджет в фокусе.
 # ---------------------------------------------------------------------------
 
-def _focus_search(event=None):
+CONTROL_STATE_MASK = 0x4  # бит в event.state, выставленный при зажатом Ctrl
+
+
+def _any_modal_window_open():
+    """
+    True, если сейчас открыто хотя бы одно модальное окно (Toplevel) —
+    добавление/редактирование контакта, настройки, экран блокировки и т.п.
+    Нужно, чтобы Ctrl+N/Ctrl+F не срабатывали "сквозь" такое окно и не лезли
+    в главное окно у него за спиной.
+    """
+    for child in app.winfo_children():
+        if isinstance(child, ctk.CTkToplevel) and child.winfo_exists():
+            return True
+    return False
+
+
+def _focus_search():
     search_entry.focus_set()
     search_entry.select_range(0, "end")
-    return "break"
 
 
-def _open_new_contact_shortcut(event=None):
-    open_add_contact_window()
-    return "break"
+def _handle_global_hotkeys(event):
+    if not (event.state & CONTROL_STATE_MASK):
+        return  # Ctrl не зажат — это не наш хоткей, не мешаем обычному вводу
+
+    key = (event.keysym or "").lower()
+
+    if key == "n":
+        if not _any_modal_window_open():
+            open_add_contact_window()
+        return "break"
+
+    if key == "f":
+        if not _any_modal_window_open():
+            _focus_search()
+        return "break"
 
 
-app.bind("<Control-n>", _open_new_contact_shortcut)
-app.bind("<Control-N>", _open_new_contact_shortcut)
-app.bind("<Control-f>", _focus_search)
-app.bind("<Control-F>", _focus_search)
+app.bind_all("<KeyPress>", _handle_global_hotkeys)
 
 filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
 filter_frame.pack(pady=5)
@@ -1904,9 +1985,9 @@ make_button(master=settings_frame, text="⚙️ Settings", width=345, height=35,
 update_password_button_text()
 
 if password_is_set:
-    show_lock_screen(show_all_contacts)
+    show_lock_screen(show_all_contacts_animated)
 else:
     load_data()
-    show_all_contacts()
+    show_all_contacts_animated()
 
 app.mainloop()
