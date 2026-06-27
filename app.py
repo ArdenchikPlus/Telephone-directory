@@ -1900,7 +1900,6 @@ def _handle_global_hotkeys(event):
             _focus_search()
         return "break"
 
-
 app.bind_all("<KeyPress>", _handle_global_hotkeys)
 
 filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
