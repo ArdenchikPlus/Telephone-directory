@@ -1,17 +1,30 @@
 import base64
 import json
 import os
+import shutil
 import sys
 import time
+import uuid
 from datetime import datetime
 from tkinter import filedialog
 import customtkinter as ctk
+
+try:
+    from PIL import Image
+    PHOTOS_SUPPORTED = True
+except ImportError:
+    PHOTOS_SUPPORTED = False
 
 FILE_CONTACTS = "contacts.json"
 FILE_FAVORITES = "favorites.json"
 FILE_SECRET = "secret.json"
 FILE_RECENT = "recent.json"
 FILE_SETTINGS = "settings.json"
+
+PHOTOS_DIR = "contact_photos"
+PHOTO_THUMB_SIZE = (64, 64)       # размер фото в строке списка контактов
+PHOTO_PREVIEW_SIZE = (140, 140)   # размер фото в окне добавления/редактирования
+PHOTO_MAX_DIMENSION = 800         # фото больше этого по любой стороне ужимается перед сохранением на диск
 
 MAX_RECENT_ITEMS = 20
 
@@ -521,6 +534,12 @@ TRANSLATIONS = {
         "add_another_number": "+ Добавить номер",
         "birthday_label": "День рождения (необязательно)",
         "birthday_placeholder": "ДД.ММ (например 25.12)",
+        "no_photo_label": "Нет фото",
+        "choose_photo_btn": "📷 Выбрать фото",
+        "remove_photo_btn": "Удалить",
+        "choose_photo_title": "Выберите фото контакта",
+        "photo_load_error": "Не удалось загрузить фото",
+        "photos_not_supported": "Поддержка фото недоступна: установите библиотеку Pillow (pip install Pillow).",
         "note_label": "Заметка (день рождения, информация и т.д.)",
         "save_btn": "Сохранить",
         "err_at_least_one_number": "Нужен хотя бы один номер!",
@@ -643,6 +662,12 @@ TRANSLATIONS = {
         "add_another_number": "+ Add another number",
         "birthday_label": "Birthday (optional)",
         "birthday_placeholder": "DD.MM (e.g. 25.12)",
+        "no_photo_label": "No photo",
+        "choose_photo_btn": "📷 Choose photo",
+        "remove_photo_btn": "Remove",
+        "choose_photo_title": "Choose a contact photo",
+        "photo_load_error": "Failed to load photo",
+        "photos_not_supported": "Photo support unavailable: install the Pillow library (pip install Pillow).",
         "note_label": "Note (birthday, info, etc.)",
         "save_btn": "Save",
         "err_at_least_one_number": "At least one number is required!",
@@ -887,6 +912,14 @@ def migrate_contacts(raw_contacts):
 
             birthday = _validate_birthday(value.get("birthday", ""))
 
+            photo = value.get("photo", "")
+            # Если файл фото ссылается на несуществующий файл (фото было
+            # удалено вручную из папки contact_photos, или пользователь
+            # перенёс contacts.json на другую машину без папки с фото) —
+            # сбрасываем поле, чтобы не пытаться рисовать битую ссылку.
+            if photo and not os.path.isfile(os.path.join(PHOTOS_DIR, photo)):
+                photo = ""
+
             migrated[name] = {
                 "phones": phones,
                 "category": category,
@@ -894,6 +927,7 @@ def migrate_contacts(raw_contacts):
                 "created_at": created_at,
                 "usage_count": usage_count,
                 "birthday": birthday,
+                "photo": photo,
             }
         else:
             migrated[name] = {
@@ -903,6 +937,7 @@ def migrate_contacts(raw_contacts):
                 "created_at": time.time(),
                 "usage_count": 0,
                 "birthday": "",
+                "photo": "",
             }
     return migrated
 
@@ -985,6 +1020,101 @@ def get_upcoming_birthdays(within_days=BIRTHDAY_REMINDER_WINDOW_DAYS):
     return upcoming
 
 
+# ---------------------------------------------------------------------------
+# Фото контактов.
+#
+# Архитектура: при выборе фото через проводник файл КОПИРУЕТСЯ (после ресайза
+# и конвертации в JPEG) в локальную папку PHOTOS_DIR под уникальным именем
+# (uuid4), а в contacts.json сохраняется только имя файла в этой папке —
+# НЕ абсолютный путь к оригиналу. Это важно: если оригинал на флешке,
+# в Загрузках, или будет удалён/перемещён пользователем после привязки к
+# контакту, фото в справочнике не пропадёт, так как у нас своя копия.
+#
+# Кэш CTkImage: создание customtkinter.CTkImage из файла на диске не
+# бесплатно (декодирование + ресайз через Pillow). Без кэша один и тот же
+# файл фото декодировался бы заново при КАЖДОЙ перерисовке списка контактов
+# (поиск, фильтр, сортировка) — на практике это самое частое действие в
+# приложении, так что кэш по имени файла существенно экономит работу.
+# ---------------------------------------------------------------------------
+
+_photo_image_cache = {}  # (filename, size) -> ctk.CTkImage
+
+
+def _photos_dir_path():
+    return PHOTOS_DIR
+
+
+def ensure_photos_dir():
+    if not os.path.isdir(PHOTOS_DIR):
+        try:
+            os.makedirs(PHOTOS_DIR, exist_ok=True)
+        except Exception:
+            pass
+
+
+def save_contact_photo(source_path):
+    """
+    Копирует выбранный пользователем файл изображения в PHOTOS_DIR, уменьшая
+    его до PHOTO_MAX_DIMENSION по большей стороне и конвертируя в JPEG для
+    компактности. Возвращает имя сохранённого файла (для хранения в
+    contacts.json) или None при ошибке (файл повреждён, не изображение,
+    PIL недоступен и т.п.) — вызывающий код должен показать ошибку
+    пользователю в этом случае, а не считать, что фото сохранилось.
+    """
+    if not PHOTOS_SUPPORTED:
+        return None
+    ensure_photos_dir()
+    try:
+        img = Image.open(source_path)
+        img = img.convert("RGB")  # отбрасываем альфа-канал/палитру для стабильного JPEG
+        img.thumbnail((PHOTO_MAX_DIMENSION, PHOTO_MAX_DIMENSION), Image.LANCZOS)
+        filename = f"{uuid.uuid4().hex}.jpg"
+        dest_path = os.path.join(PHOTOS_DIR, filename)
+        img.save(dest_path, "JPEG", quality=85)
+        return filename
+    except Exception:
+        return None
+
+
+def delete_contact_photo(filename):
+    """Удаляет файл фото с диска, если он существует. Безопасно вызывать с пустым/None значением."""
+    if not filename:
+        return
+    path = os.path.join(PHOTOS_DIR, filename)
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+    except Exception:
+        pass
+    _photo_image_cache.pop((filename, PHOTO_THUMB_SIZE), None)
+    _photo_image_cache.pop((filename, PHOTO_PREVIEW_SIZE), None)
+
+
+def get_contact_photo_image(filename, size):
+    """
+    Возвращает ctk.CTkImage для указанного файла фото и размера, используя
+    кэш. Возвращает None, если фото нет, PIL недоступен, или файл повреждён/
+    отсутствует на диске (например, был вручную удалён извне) — в этом
+    случае вызывающий код должен показать дефолтную иконку-силуэт вместо
+    фото, а не падать.
+    """
+    if not filename or not PHOTOS_SUPPORTED:
+        return None
+    cache_key = (filename, size)
+    if cache_key in _photo_image_cache:
+        return _photo_image_cache[cache_key]
+    path = os.path.join(PHOTOS_DIR, filename)
+    if not os.path.isfile(path):
+        return None
+    try:
+        pil_image = Image.open(path)
+        ctk_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=size)
+        _photo_image_cache[cache_key] = ctk_image
+        return ctk_image
+    except Exception:
+        return None
+
+
 def normalize_favorites(raw_favorites):
     if isinstance(raw_favorites, list):
         return [name for name in raw_favorites if isinstance(name, str)]
@@ -1045,7 +1175,7 @@ def confirm_dialog(message, on_confirm, parent=None, title=None):
 
 
 def open_edit_window(name, refresh_callback):
-    base_height = 470
+    base_height = 630
     row_height = 46
 
     initial_phones = contacts[name].get("phones", [{"label": "Mobile", "number": ""}])
@@ -1054,6 +1184,75 @@ def open_edit_window(name, refresh_callback):
 
     ctk.CTkLabel(master=win, text=t("edit_contact_title", name=name),
                  font=("Arial", 16, "bold")).pack(pady=(15, 10))
+
+    # --- Фото контакта ---
+    # selected_photo_path хранит путь к НОВОМУ файлу, если пользователь
+    # только что выбрал другое фото в проводнике. Если пользователь ничего
+    # не трогал, при сохранении используется текущее фото контакта без
+    # изменений (current_photo_filename) — никакого ненужного
+    # копирования/перекодирования файла, который уже на месте.
+    existing_photo_filename = contacts[name].get("photo", "")
+    selected_photo_path = {"path": None}
+    photo_removed = {"value": False}
+
+    photo_preview_label = ctk.CTkLabel(master=win, text=t("no_photo_label"), width=PHOTO_PREVIEW_SIZE[0],
+                                        height=PHOTO_PREVIEW_SIZE[1], fg_color=COLOR_GRAY, corner_radius=8,
+                                        font=("Arial", 11), text_color="white")
+    photo_preview_label.pack(pady=(0, 8))
+
+    def refresh_photo_preview():
+        # Приоритет: новое выбранное фото > существующее фото контакта (если
+        # не было нажато "Удалить") > placeholder "нет фото".
+        if selected_photo_path["path"]:
+            try:
+                pil_image = Image.open(selected_photo_path["path"])
+                preview_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=PHOTO_PREVIEW_SIZE)
+                photo_preview_label.configure(image=preview_image, text="")
+                photo_preview_label._preview_image_ref = preview_image
+                return
+            except Exception:
+                photo_preview_label.configure(image=None, text=t("photo_load_error"))
+                return
+        if not photo_removed["value"] and existing_photo_filename:
+            preview_image = get_contact_photo_image(existing_photo_filename, PHOTO_PREVIEW_SIZE)
+            if preview_image is not None:
+                photo_preview_label.configure(image=preview_image, text="")
+                photo_preview_label._preview_image_ref = preview_image
+                return
+        photo_preview_label.configure(image=None, text=t("no_photo_label"))
+
+    def choose_photo():
+        path = filedialog.askopenfilename(
+            title=t("choose_photo_title"),
+            filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.gif *.webp")],
+        )
+        if not path:
+            return
+        selected_photo_path["path"] = path
+        photo_removed["value"] = False
+        refresh_photo_preview()
+
+    def remove_photo():
+        selected_photo_path["path"] = None
+        photo_removed["value"] = True
+        refresh_photo_preview()
+
+    photo_btn_row = ctk.CTkFrame(master=win, fg_color="transparent")
+    photo_btn_row.pack(pady=(0, 10))
+
+    make_button(master=photo_btn_row, text=t("choose_photo_btn"), width=150, height=30,
+                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 12),
+                  command=choose_photo).pack(side="left", padx=4)
+
+    make_button(master=photo_btn_row, text=t("remove_photo_btn"), width=90, height=30,
+                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
+                  command=remove_photo).pack(side="left", padx=4)
+
+    if not PHOTOS_SUPPORTED:
+        ctk.CTkLabel(master=win, text=t("photos_not_supported"), font=("Arial", 10),
+                     text_color="gray", wraplength=300).pack(pady=(0, 8))
+
+    refresh_photo_preview()
 
     current_category = contacts[name].get("category", "Other")
     category_var = ctk.StringVar(value=category_label(current_category))
@@ -1173,6 +1372,26 @@ def open_edit_window(name, refresh_callback):
             "Other"
         )
 
+        # Логика фото при сохранении (три случая):
+        # 1) Пользователь выбрал НОВОЕ фото -> сохраняем его на диск, удаляем
+        #    старый файл (если был), используем новое имя файла.
+        # 2) Пользователь нажал "Удалить" -> удаляем старый файл с диска,
+        #    поле photo становится пустым.
+        # 3) Пользователь не трогал фото -> оставляем существующее имя файла
+        #    без каких-либо файловых операций.
+        if selected_photo_path["path"]:
+            new_photo_filename = save_contact_photo(selected_photo_path["path"])
+            if new_photo_filename:
+                delete_contact_photo(existing_photo_filename)
+                final_photo_filename = new_photo_filename
+            else:
+                final_photo_filename = existing_photo_filename
+        elif photo_removed["value"]:
+            delete_contact_photo(existing_photo_filename)
+            final_photo_filename = ""
+        else:
+            final_photo_filename = existing_photo_filename
+
         contacts[name] = {
             "phones": new_phones,
             "category": category_key,
@@ -1180,6 +1399,7 @@ def open_edit_window(name, refresh_callback):
             "created_at": contacts[name].get("created_at", time.time()),
             "usage_count": contacts[name].get("usage_count", 0),
             "birthday": new_birthday,
+            "photo": final_photo_filename,
         }
         save_contacts()
         refresh_callback()
@@ -1260,7 +1480,9 @@ def delete_contact(name, refresh_callback):
                 break
 
         def finish_delete():
+            photo_filename = contacts[name].get("photo", "")
             del contacts[name]
+            delete_contact_photo(photo_filename)
             if name in favorites:
                 favorites.remove(name)
                 save_favorites()
@@ -1284,7 +1506,8 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
     row._contact_name = name  # метка для поиска при анимации удаления
     row.pack(fill="x", padx=5, pady=3)
 
-    prefix = "⭐ " if name in favorites else "👤 "
+    has_photo = bool(contacts.get(name, {}).get("photo", ""))
+    prefix = "" if has_photo else ("⭐ " if name in favorites else "👤 ")
     label_kwargs = (
         {"font": ("Arial", 14, "bold"), "text_color": "#2cb67d"}
         if highlight else
@@ -1292,6 +1515,8 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
     )
 
     display_text = f"{prefix}{name}: {phones_text}"
+    if name in favorites and has_photo:
+        display_text = f"⭐ {display_text}"
     if note:
         display_text += " 📝"
 
@@ -1311,6 +1536,16 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
     ctk.CTkLabel(master=row, text=category_label(category), font=("Arial", 10, "bold"),
                  fg_color=CATEGORY_COLORS.get(category, COLOR_GRAY), text_color="white",
                  corner_radius=6, width=60).pack(side="right", padx=5)
+
+    # Миниатюра фото контакта, если оно есть. get_contact_photo_image
+    # возвращает None если фото нет / PIL недоступен / файл повреждён —
+    # в этих случаях просто не показываем картинку, текстовый префикс
+    # (👤/⭐ эмодзи) уже добавлен в display_text выше как замена.
+    photo_filename = contacts.get(name, {}).get("photo", "")
+    photo_image = get_contact_photo_image(photo_filename, PHOTO_THUMB_SIZE) if photo_filename else None
+    if photo_image is not None:
+        ctk.CTkLabel(master=row, text="", image=photo_image, width=32, height=32).pack(
+            side="left", padx=(5, 0))
 
     text_col = ctk.CTkFrame(master=row, fg_color="transparent")
     text_col.pack(side="left", fill="both", expand=True, padx=5)
@@ -1478,7 +1713,7 @@ def search_contact():
 
 
 def open_add_contact_window():
-    base_height = 500
+    base_height = 660
     row_height = 46
 
     win = make_toplevel(t("new_contact_title"), f"360x{base_height}")
@@ -1487,6 +1722,62 @@ def open_add_contact_window():
 
     name_entry = ctk.CTkEntry(master=win, placeholder_text=t("name_placeholder"), width=260)
     name_entry.pack(pady=(0, 10))
+
+    # --- Фото контакта ---
+    # selected_photo_path хранит АБСОЛЮТНЫЙ путь к файлу, который пользователь
+    # только что выбрал в проводнике. Реальное копирование в PHOTOS_DIR
+    # происходит только при сохранении контакта (save_new_contact) — если
+    # пользователь закроет окно без сохранения, лишняя копия не создаётся.
+    selected_photo_path = {"path": None}
+
+    photo_preview_label = ctk.CTkLabel(master=win, text=t("no_photo_label"), width=PHOTO_PREVIEW_SIZE[0],
+                                        height=PHOTO_PREVIEW_SIZE[1], fg_color=COLOR_GRAY, corner_radius=8,
+                                        font=("Arial", 11), text_color="white")
+    photo_preview_label.pack(pady=(0, 8))
+
+    def refresh_photo_preview():
+        path = selected_photo_path["path"]
+        if not path or not PHOTOS_SUPPORTED:
+            photo_preview_label.configure(image=None, text=t("no_photo_label"))
+            return
+        try:
+            pil_image = Image.open(path)
+            preview_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=PHOTO_PREVIEW_SIZE)
+            photo_preview_label.configure(image=preview_image, text="")
+            # ссылка должна жить, иначе CTkImage может быть собран GC и
+            # изображение пропадёт с экрана
+            photo_preview_label._preview_image_ref = preview_image
+        except Exception:
+            photo_preview_label.configure(image=None, text=t("photo_load_error"))
+
+    def choose_photo():
+        path = filedialog.askopenfilename(
+            title=t("choose_photo_title"),
+            filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.gif *.webp")],
+        )
+        if not path:
+            return
+        selected_photo_path["path"] = path
+        refresh_photo_preview()
+
+    def remove_photo():
+        selected_photo_path["path"] = None
+        refresh_photo_preview()
+
+    photo_btn_row = ctk.CTkFrame(master=win, fg_color="transparent")
+    photo_btn_row.pack(pady=(0, 10))
+
+    make_button(master=photo_btn_row, text=t("choose_photo_btn"), width=150, height=30,
+                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 12),
+                  command=choose_photo).pack(side="left", padx=4)
+
+    make_button(master=photo_btn_row, text=t("remove_photo_btn"), width=90, height=30,
+                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
+                  command=remove_photo).pack(side="left", padx=4)
+
+    if not PHOTOS_SUPPORTED:
+        ctk.CTkLabel(master=win, text=t("photos_not_supported"), font=("Arial", 10),
+                     text_color="gray", wraplength=300).pack(pady=(0, 8))
 
     category_display_values = [category_label(c) for c in CATEGORIES]
     category_var = ctk.StringVar(value=category_display_values[0])
@@ -1607,6 +1898,15 @@ def open_add_contact_window():
         )
 
         note = note_box.get("1.0", "end").strip()
+
+        # Копируем выбранное фото в PHOTOS_DIR только сейчас, при реальном
+        # сохранении контакта — если save_contact_photo вернёт None (PIL
+        # недоступен, файл повреждён и т.п.), просто сохраняем без фото,
+        # не блокируя создание контакта целиком из-за проблемы с картинкой.
+        photo_filename = ""
+        if selected_photo_path["path"]:
+            photo_filename = save_contact_photo(selected_photo_path["path"]) or ""
+
         contacts[name] = {
             "phones": new_phones,
             "category": category_key,
@@ -1614,6 +1914,7 @@ def open_add_contact_window():
             "created_at": time.time(),
             "usage_count": 0,
             "birthday": new_birthday,
+            "photo": photo_filename,
         }
         save_contacts()
         win.destroy()
@@ -1842,6 +2143,8 @@ def merge_contacts(names_to_merge, win_to_close=None):
     earliest_created_at = None
     merged_usage_count = 0
     merged_birthday = ""
+    merged_photo = ""
+    photos_to_discard = []
 
     for name in names_to_merge:
         if name not in contacts:
@@ -1862,6 +2165,15 @@ def merge_contacts(names_to_merge, win_to_close=None):
         merged_usage_count += data.get("usage_count", 0)
         if not merged_birthday and data.get("birthday"):
             merged_birthday = data["birthday"]
+        # Оставляем первое найденное фото в группе как итоговое, остальные
+        # фото "поглощённых" контактов помечаем на удаление с диска —
+        # после слияния они больше ни на что не ссылаются.
+        contact_photo = data.get("photo", "")
+        if contact_photo:
+            if not merged_photo:
+                merged_photo = contact_photo
+            elif contact_photo != merged_photo:
+                photos_to_discard.append(contact_photo)
 
     primary_name = names_to_merge[0]
 
@@ -1874,6 +2186,9 @@ def merge_contacts(names_to_merge, win_to_close=None):
                 if r["name"] == name:
                     r["name"] = primary_name
 
+    for discarded_photo in photos_to_discard:
+        delete_contact_photo(discarded_photo)
+
     contacts[primary_name] = {
         "phones": merged_phones if merged_phones else [{"label": "Mobile", "number": ""}],
         "category": merged_category or "Other",
@@ -1881,6 +2196,7 @@ def merge_contacts(names_to_merge, win_to_close=None):
         "created_at": earliest_created_at if earliest_created_at is not None else time.time(),
         "usage_count": merged_usage_count,
         "birthday": merged_birthday,
+        "photo": merged_photo,
     }
 
     save_contacts()
@@ -2048,6 +2364,8 @@ def clear_all_contacts_window():
         return
 
     def do_clear():
+        for data in contacts.values():
+            delete_contact_photo(data.get("photo", ""))
         contacts.clear()
         favorites.clear()
         recent.clear()
