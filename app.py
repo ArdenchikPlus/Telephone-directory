@@ -455,10 +455,13 @@ def load_settings():
                 data.setdefault("dup_threshold", "medium")
                 if data["dup_threshold"] not in ("strict", "medium", "loose"):
                     data["dup_threshold"] = "medium"
+                data.setdefault("language", "ru")
+                if data["language"] not in ("ru", "en"):
+                    data["language"] = "ru"
                 return data
         except Exception:
             pass
-    return {"theme": "dark", "dup_threshold": "medium"}
+    return {"theme": "dark", "dup_threshold": "medium", "language": "ru"}
 
 
 def save_settings():
@@ -467,6 +470,335 @@ def save_settings():
 
 
 app_settings = load_settings()
+
+
+# ---------------------------------------------------------------------------
+# Многоязычность (RU/EN).
+#
+# ВАЖНО про архитектуру: внутренние ключи данных (CATEGORIES, SORT_OPTIONS,
+# PHONE_LABELS — то, что хранится в contacts.json и используется для
+# сравнений/фильтрации) ОСТАЮТСЯ на английском независимо от языка
+# интерфейса. Если бы мы переводили сами эти строки, старые сохранённые
+# контакты "слетели" бы при переключении языка (например, "Friends" в JSON
+# не совпало бы с "Друзья" после перевода). Поэтому переводятся только
+# ОТОБРАЖАЕМЫЕ подписи через отдельные словари CATEGORY_LABELS/
+# SORT_LABELS/PHONE_LABEL_LABELS, а внутри контактов везде остаётся
+# английский ключ.
+#
+# Язык переключается ТОЛЬКО с главного экрана (Settings) и только когда не
+# открыто никаких других окон — поэтому не нужно "живое" перестроение уже
+# открытых модальных окон, достаточно пересобрать главный экран.
+# ---------------------------------------------------------------------------
+
+TRANSLATIONS = {
+    "ru": {
+        "app_title": "Телефонный справочник",
+        "search_placeholder": "Введите имя или номер для поиска...",
+        "category_label": "Категория:",
+        "sort_label": "Сортировка:",
+        "contact_list": "Список контактов ({count})",
+        "no_contacts_in_category": "Нет контактов в этой категории",
+        "nothing_found": "Ничего не найдено",
+        "add_contact": "Добавить контакт",
+        "favorites": "Избранное",
+        "recent": "Недавние",
+        "find_duplicates": "Найти дубликаты",
+        "password_btn": "Пароль",
+        "change_password_btn": "Изменить пароль",
+        "clear_all": "Очистить всё",
+        "settings": "Настройки",
+        "hotkey_tip": "Подсказка: Ctrl+N — новый контакт   ·   Ctrl+F — поиск",
+        "stats_total": "Всего: {count}",
+        "stats_favorites": "В избранном: {count}",
+        "birthday_badge": "🎂 {count}",
+        "birthday_badge_tooltip": "Ближайшие дни рождения",
+        # Add/Edit contact window
+        "new_contact_title": "Новый контакт",
+        "edit_contact_title": "Редактировать {name}",
+        "name_placeholder": "Имя контакта",
+        "phone_numbers_label": "Номера телефонов",
+        "add_another_number": "+ Добавить номер",
+        "birthday_label": "День рождения (необязательно)",
+        "birthday_placeholder": "ДД.ММ (например 25.12)",
+        "note_label": "Заметка (день рождения, информация и т.д.)",
+        "save_btn": "Сохранить",
+        "err_at_least_one_number": "Нужен хотя бы один номер!",
+        "err_numbers_digits": "Номер должен состоять из цифр!",
+        "err_add_one_number": "Добавьте хотя бы один номер телефона!",
+        "err_fill_name": "Заполните имя!",
+        "err_name_exists": "Такое имя уже существует! ⚠️",
+        "err_birthday_format": "Формат: ДД.ММ (например 05.09)",
+        # Confirm dialogs
+        "yes": "Да",
+        "no": "Нет",
+        "delete_contact_confirm": "Удалить контакт «{name}»?",
+        "delete_all_confirm": "Удалить ВСЕ контакты?",
+        "note_title": "Заметка",
+        "note_for": "Заметка для {name}:",
+        # Favorites window
+        "favorites_title": "⭐ Избранные контакты",
+        "fav_entry_placeholder": "Введите имя из списка, чтобы добавить...",
+        "fav_empty": "Список избранного пуст",
+        "fav_add_btn": "Добавить в избранное",
+        "fav_add_confirm": "Добавить «{name}» в избранное?",
+        "fav_no_matches": "Совпадений не найдено!",
+        "fav_multiple_matches": "Найдено несколько! Уточните запрос.",
+        # Recent window
+        "recent_title": "🕘 Недавно открытые",
+        "recent_empty": "Пока нет недавно открытых контактов",
+        "recent_opened": "Открыт {when}",
+        "clear_history": "Очистить историю",
+        "clear_recent_confirm": "Очистить историю недавних?",
+        # Duplicates window
+        "duplicates_title": "🔍 Возможные дубликаты",
+        "no_duplicates": "Дубликатов не найдено! 🎉",
+        "no_more_duplicates": "Больше дубликатов нет! 🎉",
+        "merge_btn": "Объединить",
+        "merge_confirm": "Объединить {names} в один контакт?\nВсе номера будут объединены.",
+        "merge_title": "Объединить контакты",
+        # Settings window
+        "settings_title": "⚙️ Настройки",
+        "appearance_label": "Внешний вид",
+        "theme_dark": "🌙 Тёмная",
+        "theme_light": "☀️ Светлая",
+        "dup_sensitivity_label": "Чувствительность поиска дубликатов",
+        "dup_sensitivity_desc": "Насколько строго сравниваются имена при поиске дубликатов",
+        "backup_label": "Резервное копирование",
+        "export_btn": "⬇️ Экспортировать контакты в JSON",
+        "import_btn": "⬆️ Импортировать контакты из JSON",
+        "hotkeys_label": "⌨️ Горячие клавиши",
+        "hotkey_new_contact": "Новый контакт",
+        "hotkey_search": "Перейти к поиску",
+        "language_label": "Язык интерфейса",
+        "language_locked": "Закройте другие окна, чтобы сменить язык",
+        # Export/import dialogs
+        "export_success": "Экспортировано {count} контакт(ов)!",
+        "export_complete_title": "Экспорт завершён",
+        "export_failed": "Экспорт не удался:\n{error}",
+        "export_error_title": "Ошибка экспорта",
+        "import_failed": "Импорт не удался:\n{error}",
+        "import_error_title": "Ошибка импорта",
+        "import_invalid_file": "Этот файл не похож на корректный экспорт справочника.",
+        "import_options_title": "Параметры импорта",
+        "import_found": "Найдено {count} контакт(ов)",
+        "import_how": "Как их импортировать?",
+        "import_merge_btn": "Объединить с текущими",
+        "import_replace_btn": "Заменить все контакты",
+        "import_replace_confirm": "Текущие контакты будут удалены и заменены. Продолжить?",
+        "import_replace_title": "Заменить все",
+        # Password windows
+        "set_password_title": "Установить мастер-пароль",
+        "new_password_placeholder": "Новый пароль",
+        "hint_placeholder": "Подсказка (необязательно)",
+        "confirm_btn": "Подтвердить",
+        "err_password_empty": "Пароль не может быть пустым!",
+        "manage_password_title": "🔐 Управление паролем",
+        "reset_password_btn": "Сбросить пароль",
+        "forgot_password_btn": "Забыли пароль?",
+        "reset_password_confirm": "Сбросить пароль? Мастер-пароль будет удалён.",
+        "reset_password_title": "Сброс пароля",
+        "password_recovery_title": "Восстановление пароля",
+        "no_hint_set": "Для этого пароля подсказка не задана.",
+        "enter_hint_answer": "Введите ответ на подсказку:",
+        "hint_answer_placeholder": "Ответ на подсказку",
+        "check_btn": "Проверить",
+        "your_password_is": "Ваш пароль: {password}",
+        "wrong_hint": "Неверный ответ на подсказку!",
+        # Lock screen
+        "enter_password_title": "🔒 Введите пароль",
+        "password_placeholder": "Пароль",
+        "unlock_btn": "Разблокировать",
+        "wrong_password": "Неверный пароль! ❌ (осталось попыток: {tries})",
+        "too_many_attempts": "Слишком много попыток! Подождите {seconds}с ⏳",
+    },
+    "en": {
+        "app_title": "Telephone directory",
+        "search_placeholder": "Enter a name or number to search...",
+        "category_label": "Category:",
+        "sort_label": "Sort by:",
+        "contact_list": "Contact list ({count})",
+        "no_contacts_in_category": "No contacts in this category",
+        "nothing_found": "Nothing found",
+        "add_contact": "Add contact",
+        "favorites": "Favorites",
+        "recent": "Recent",
+        "find_duplicates": "Find duplicates",
+        "password_btn": "Password",
+        "change_password_btn": "Change password",
+        "clear_all": "Clear all",
+        "settings": "Settings",
+        "hotkey_tip": "Tip: Ctrl+N — new contact   ·   Ctrl+F — search",
+        "stats_total": "Total: {count}",
+        "stats_favorites": "Favorites: {count}",
+        "birthday_badge": "🎂 {count}",
+        "birthday_badge_tooltip": "Upcoming birthdays",
+        # Add/Edit contact window
+        "new_contact_title": "New contact",
+        "edit_contact_title": "Edit {name}",
+        "name_placeholder": "Contact name",
+        "phone_numbers_label": "Phone numbers",
+        "add_another_number": "+ Add another number",
+        "birthday_label": "Birthday (optional)",
+        "birthday_placeholder": "DD.MM (e.g. 25.12)",
+        "note_label": "Note (birthday, info, etc.)",
+        "save_btn": "Save",
+        "err_at_least_one_number": "At least one number is required!",
+        "err_numbers_digits": "Numbers must consist of digits!",
+        "err_add_one_number": "Add at least one phone number!",
+        "err_fill_name": "Please fill in the name!",
+        "err_name_exists": "This contact name already exists! ⚠️",
+        "err_birthday_format": "Format: DD.MM (e.g. 05.09)",
+        # Confirm dialogs
+        "yes": "Yes",
+        "no": "No",
+        "delete_contact_confirm": "Delete contact '{name}'?",
+        "delete_all_confirm": "Delete ALL contacts?",
+        "note_title": "Note",
+        "note_for": "Note for {name}:",
+        # Favorites window
+        "favorites_title": "⭐ Favorite Contacts",
+        "fav_entry_placeholder": "Type name from list to add...",
+        "fav_empty": "Favorites list is empty",
+        "fav_add_btn": "Add to favorites",
+        "fav_add_confirm": "Add '{name}' to favorites?",
+        "fav_no_matches": "No new matches found!",
+        "fav_multiple_matches": "Multiple found! Be more specific.",
+        # Recent window
+        "recent_title": "🕘 Recently Opened",
+        "recent_empty": "No recently opened contacts yet",
+        "recent_opened": "Opened {when}",
+        "clear_history": "Clear history",
+        "clear_recent_confirm": "Clear recent history?",
+        # Duplicates window
+        "duplicates_title": "🔍 Possible Duplicates",
+        "no_duplicates": "No duplicates found! 🎉",
+        "no_more_duplicates": "No more duplicates! 🎉",
+        "merge_btn": "Merge into one",
+        "merge_confirm": "Merge {names} into one contact?\nAll numbers will be combined.",
+        "merge_title": "Merge contacts",
+        # Settings window
+        "settings_title": "⚙️ Settings",
+        "appearance_label": "Appearance",
+        "theme_dark": "🌙 Dark",
+        "theme_light": "☀️ Light",
+        "dup_sensitivity_label": "Duplicate detection sensitivity",
+        "dup_sensitivity_desc": "How strict the name-matching is when looking for duplicates",
+        "backup_label": "Backup & restore",
+        "export_btn": "⬇️ Export contacts to JSON",
+        "import_btn": "⬆️ Import contacts from JSON",
+        "hotkeys_label": "⌨️ Keyboard shortcuts",
+        "hotkey_new_contact": "Add a new contact",
+        "hotkey_search": "Jump to the search field",
+        "language_label": "Interface language",
+        "language_locked": "Close other windows to change language",
+        # Export/import dialogs
+        "export_success": "Exported {count} contact(s) successfully!",
+        "export_complete_title": "Export complete",
+        "export_failed": "Export failed:\n{error}",
+        "export_error_title": "Export error",
+        "import_failed": "Import failed:\n{error}",
+        "import_error_title": "Import error",
+        "import_invalid_file": "This file doesn't look like a valid phonebook export.",
+        "import_options_title": "Import options",
+        "import_found": "Found {count} contact(s)",
+        "import_how": "How do you want to import them?",
+        "import_merge_btn": "Merge with existing",
+        "import_replace_btn": "Replace all contacts",
+        "import_replace_confirm": "This will delete your current contacts and replace them. Continue?",
+        "import_replace_title": "Replace all",
+        # Password windows
+        "set_password_title": "Set Master Password",
+        "new_password_placeholder": "New password",
+        "hint_placeholder": "Hint (optional)",
+        "confirm_btn": "Confirm",
+        "err_password_empty": "Password cannot be empty!",
+        "manage_password_title": "🔐 Manage Password",
+        "reset_password_btn": "Reset password",
+        "forgot_password_btn": "Forgot password?",
+        "reset_password_confirm": "Reset password? This removes the master password.",
+        "reset_password_title": "Reset Password",
+        "password_recovery_title": "Password Recovery",
+        "no_hint_set": "No hint was set for this password.",
+        "enter_hint_answer": "Enter the hint answer:",
+        "hint_answer_placeholder": "Hint answer",
+        "check_btn": "Check",
+        "your_password_is": "Your password: {password}",
+        "wrong_hint": "Incorrect hint answer!",
+        # Lock screen
+        "enter_password_title": "🔒 Enter Password",
+        "password_placeholder": "Password",
+        "unlock_btn": "Unlock",
+        "wrong_password": "Wrong password! ❌ ({tries} attempt(s) left)",
+        "too_many_attempts": "Too many attempts! Wait {seconds}s ⏳",
+    },
+}
+
+CATEGORY_LABELS = {
+    "ru": {"Work": "Работа", "Family": "Семья", "Friends": "Друзья", "Other": "Другое", "All": "Все"},
+    "en": {"Work": "Work", "Family": "Family", "Friends": "Friends", "Other": "Other", "All": "All"},
+}
+
+SORT_LABELS = {
+    "ru": {
+        SORT_NAME_AZ: "Имя (А-Я)",
+        SORT_NAME_ZA: "Имя (Я-А)",
+        SORT_DATE_NEWEST: "Дата добавления (новые)",
+        SORT_DATE_OLDEST: "Дата добавления (старые)",
+    },
+    "en": {
+        SORT_NAME_AZ: SORT_NAME_AZ,
+        SORT_NAME_ZA: SORT_NAME_ZA,
+        SORT_DATE_NEWEST: SORT_DATE_NEWEST,
+        SORT_DATE_OLDEST: SORT_DATE_OLDEST,
+    },
+}
+
+PHONE_LABEL_LABELS = {
+    "ru": {"Mobile": "Моб.", "Work": "Раб.", "Home": "Дом.", "Other": "Др."},
+    "en": {"Mobile": "Mobile", "Work": "Work", "Home": "Home", "Other": "Other"},
+}
+
+
+def current_language():
+    return app_settings.get("language", "ru")
+
+
+def t(key, **kwargs):
+    """
+    Возвращает перевод строки по ключу для текущего языка интерфейса.
+    Поддерживает форматирование через .format(**kwargs), например
+    t("contact_list", count=5) -> "Contact list (5)" / "Список контактов (5)".
+    Если ключ не найден (опечатка, рассинхронизация словарей) — возвращает
+    сам ключ как fallback, чтобы интерфейс не падал, а просто показал
+    непереведённый текст, который легко заметить и исправить.
+    """
+    lang = current_language()
+    table = TRANSLATIONS.get(lang, TRANSLATIONS["ru"])
+    template = table.get(key, TRANSLATIONS["ru"].get(key, key))
+    if kwargs:
+        try:
+            return template.format(**kwargs)
+        except Exception:
+            return template
+    return template
+
+
+def category_label(category_key):
+    """Переводит внутренний ключ категории (например 'Work') в подпись на текущем языке."""
+    lang = current_language()
+    return CATEGORY_LABELS.get(lang, CATEGORY_LABELS["ru"]).get(category_key, category_key)
+
+
+def sort_label(sort_key):
+    """Переводит внутренний ключ сортировки в подпись на текущем языке."""
+    lang = current_language()
+    return SORT_LABELS.get(lang, SORT_LABELS["ru"]).get(sort_key, sort_key)
+
+
+def phone_label_label(label_key):
+    """Переводит внутренний ключ метки телефона (Mobile/Work/Home/Other) в подпись."""
+    lang = current_language()
+    return PHONE_LABEL_LABELS.get(lang, PHONE_LABEL_LABELS["ru"]).get(label_key, label_key)
 
 
 secret_data = load_secret()
@@ -480,8 +812,39 @@ contacts = {}
 favorites = []
 recent = []
 
+# Заполняются реальными виджетами при создании главного экрана (ниже по
+# файлу). До этого момента остаются None — update_stats_label()/
+# update_birthday_badge() безопасно проверяют это перед использованием.
+stats_label = None
+birthday_badge = None
+
 failed_attempts = 0
 lockout_until = 0.0
+
+
+def _validate_birthday(value):
+    """
+    Проверяет и нормализует дату рождения в формате "ДД.ММ" (без года —
+    год рождения для напоминаний не нужен, только месяц и день).
+    Возвращает нормализованную строку "ДД.ММ" или "" если значение
+    отсутствует/некорректно.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    value = value.strip()
+    parts = value.split(".")
+    if len(parts) != 2:
+        return ""
+    try:
+        day, month = int(parts[0]), int(parts[1])
+    except ValueError:
+        return ""
+    if not (1 <= month <= 12):
+        return ""
+    days_in_month = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]  # 29 для февраля с запасом
+    if not (1 <= day <= days_in_month[month - 1]):
+        return ""
+    return f"{day:02d}.{month:02d}"
 
 
 def migrate_contacts(raw_contacts):
@@ -518,12 +881,15 @@ def migrate_contacts(raw_contacts):
             if not isinstance(usage_count, int) or usage_count < 0:
                 usage_count = 0
 
+            birthday = _validate_birthday(value.get("birthday", ""))
+
             migrated[name] = {
                 "phones": phones,
                 "category": category,
                 "note": note,
                 "created_at": created_at,
                 "usage_count": usage_count,
+                "birthday": birthday,
             }
         else:
             migrated[name] = {
@@ -532,6 +898,7 @@ def migrate_contacts(raw_contacts):
                 "note": "",
                 "created_at": time.time(),
                 "usage_count": 0,
+                "birthday": "",
             }
     return migrated
 
@@ -549,6 +916,69 @@ def all_phones_text(data):
     if len(phones) == 1:
         return phones[0]["number"]
     return ", ".join(f"{p['label']}: {p['number']}" for p in phones)
+
+
+BIRTHDAY_REMINDER_WINDOW_DAYS = 7
+
+
+def days_until_birthday(birthday_str, today=None):
+    """
+    Считает количество дней от сегодня до следующего дня рождения в формате
+    "ДД.ММ". Если ДР сегодня — возвращает 0. Если дата уже прошла в этом
+    году — считает до даты в СЛЕДУЮЩЕМ году. Возвращает None, если строка
+    пустая или некорректная.
+
+    Особый случай 29.02 (високосный день): если текущий год невисокосный,
+    считаем относительно 1 марта, чтобы не вызывать ValueError при попытке
+    построить дату 29 февраля в невисокосном году.
+    """
+    if not birthday_str:
+        return None
+    try:
+        day, month = (int(p) for p in birthday_str.split("."))
+    except (ValueError, AttributeError):
+        return None
+
+    today = today or datetime.now().date()
+    year = today.year
+
+    def _safe_date(y, m, d):
+        try:
+            return datetime(y, m, d).date()
+        except ValueError:
+            # 29 февраля в невисокосном году -> сдвигаем на 1 марта
+            if m == 2 and d == 29:
+                return datetime(y, 3, 1).date()
+            return None
+
+    candidate = _safe_date(year, month, day)
+    if candidate is None:
+        return None
+
+    if candidate < today:
+        candidate = _safe_date(year + 1, month, day)
+        if candidate is None:
+            return None
+
+    return (candidate - today).days
+
+
+def get_upcoming_birthdays(within_days=BIRTHDAY_REMINDER_WINDOW_DAYS):
+    """
+    Возвращает список (имя, дней_до_дня_рождения) для контактов, у которых
+    день рождения наступает в течение within_days дней (включительно),
+    отсортированный по близости (сначала самые скорые).
+    """
+    upcoming = []
+    for name, data in contacts.items():
+        birthday = data.get("birthday", "")
+        if not birthday:
+            continue
+        days_left = days_until_birthday(birthday)
+        if days_left is not None and days_left <= within_days:
+            upcoming.append((name, days_left))
+    upcoming.sort(key=lambda item: item[1])
+    return upcoming
 
 
 def normalize_favorites(raw_favorites):
@@ -611,20 +1041,24 @@ def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
 
 
 def open_edit_window(name, refresh_callback):
-    base_height = 430
+    base_height = 470
     row_height = 46
 
     initial_phones = contacts[name].get("phones", [{"label": "Mobile", "number": ""}])
-    win = make_toplevel("Edit contact", f"360x{base_height + row_height * len(initial_phones)}")
+    win = make_toplevel(t("edit_contact_title", name=name),
+                         f"360x{base_height + row_height * len(initial_phones)}")
 
-    ctk.CTkLabel(master=win, text=f"Edit {name}", font=("Arial", 16, "bold")).pack(pady=(15, 10))
+    ctk.CTkLabel(master=win, text=t("edit_contact_title", name=name),
+                 font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
     current_category = contacts[name].get("category", "Other")
-    category_var = ctk.StringVar(value=current_category)
-    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=260)
+    category_var = ctk.StringVar(value=category_label(current_category))
+    category_display_values = [category_label(c) for c in CATEGORIES]
+    category_menu = ctk.CTkOptionMenu(master=win, values=category_display_values,
+                                       variable=category_var, width=260)
     category_menu.pack(pady=(0, 10))
 
-    ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12, "bold"),
+    ctk.CTkLabel(master=win, text=t("phone_numbers_label"), font=("Arial", 12, "bold"),
                  text_color="gray").pack(anchor="w", padx=30)
 
     phones_frame = ctk.CTkFrame(master=win, fg_color="transparent")
@@ -639,8 +1073,10 @@ def open_edit_window(name, refresh_callback):
         row = ctk.CTkFrame(master=phones_frame, corner_radius=8)
         row.pack(fill="x", pady=4)
 
-        label_var = ctk.StringVar(value=label if label in PHONE_LABELS else "Other")
-        label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=95)
+        label_key = label if label in PHONE_LABELS else "Other"
+        label_display_values = [phone_label_label(l) for l in PHONE_LABELS]
+        label_var = ctk.StringVar(value=phone_label_label(label_key))
+        label_menu = ctk.CTkOptionMenu(master=row, values=label_display_values, variable=label_var, width=95)
         label_menu.pack(side="left", padx=(8, 6), pady=8)
 
         number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text="Number")
@@ -649,7 +1085,7 @@ def open_edit_window(name, refresh_callback):
 
         def remove_row():
             if len(phone_rows) <= 1:
-                error_label.configure(text="At least one number is required!", text_color="red")
+                error_label.configure(text=t("err_at_least_one_number"), text_color="red")
                 shake_widget(error_label)
                 return
             phone_rows.remove(entry_tuple)
@@ -671,11 +1107,18 @@ def open_edit_window(name, refresh_callback):
         add_phone_row()
         resize_window()
 
-    make_button(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
+    make_button(master=win, text=t("add_another_number"), width=180, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
                   command=add_new_row).pack(pady=(0, 10))
 
-    ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
+    ctk.CTkLabel(master=win, text=t("birthday_label"), font=("Arial", 12),
+                 text_color="gray").pack(pady=(0, 0))
+
+    birthday_entry = ctk.CTkEntry(master=win, width=260, placeholder_text=t("birthday_placeholder"))
+    birthday_entry.insert(0, contacts[name].get("birthday", ""))
+    birthday_entry.pack(pady=(2, 8))
+
+    ctk.CTkLabel(master=win, text=t("note_label"), font=("Arial", 12),
                  text_color="gray").pack(pady=(0, 0))
 
     note_box = ctk.CTkTextbox(master=win, width=260, height=70)
@@ -692,29 +1135,53 @@ def open_edit_window(name, refresh_callback):
             if not number:
                 continue
             if not number.isdigit():
-                error_label.configure(text="Numbers must consist of digits!", text_color="red")
+                error_label.configure(text=t("err_numbers_digits"), text_color="red")
                 shake_widget(error_label)
                 return
-            new_phones.append({"label": label_var.get(), "number": number})
+            # label_var хранит переведённую подпись (например "Раб.") — нужно
+            # найти соответствующий ВНУТРЕННИЙ ключ (например "Work"), чтобы
+            # в contacts.json всегда хранился ключ на английском независимо
+            # от текущего языка интерфейса.
+            display_value = label_var.get()
+            label_key = next(
+                (l for l in PHONE_LABELS if phone_label_label(l) == display_value),
+                "Other"
+            )
+            new_phones.append({"label": label_key, "number": number})
 
         if not new_phones:
-            error_label.configure(text="Add at least one phone number!", text_color="red")
+            error_label.configure(text=t("err_add_one_number"), text_color="red")
             shake_widget(error_label)
             return
 
+        birthday_raw = birthday_entry.get().strip()
+        new_birthday = _validate_birthday(birthday_raw) if birthday_raw else ""
+        if birthday_raw and not new_birthday:
+            error_label.configure(text=t("err_birthday_format"), text_color="red")
+            shake_widget(birthday_entry)
+            return
+
         new_note = note_box.get("1.0", "end").strip()
+
+        category_display_value = category_var.get()
+        category_key = next(
+            (c for c in CATEGORIES if category_label(c) == category_display_value),
+            "Other"
+        )
+
         contacts[name] = {
             "phones": new_phones,
-            "category": category_var.get(),
+            "category": category_key,
             "note": new_note,
             "created_at": contacts[name].get("created_at", time.time()),
             "usage_count": contacts[name].get("usage_count", 0),
+            "birthday": new_birthday,
         }
         save_contacts()
         refresh_callback()
         win.destroy()
 
-    make_button(master=win, text="Save", width=150, height=35, corner_radius=8,
+    make_button(master=win, text=t("save_btn"), width=150, height=35, corner_radius=8,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=save_edit).pack(pady=8)
 
@@ -796,7 +1263,7 @@ def delete_contact(name, refresh_callback):
             recent[:] = [r for r in recent if r["name"] != name]
             save_recent()
             save_contacts()
-            contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+            contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
             refresh_callback()
 
         if target_row is not None:
@@ -804,7 +1271,7 @@ def delete_contact(name, refresh_callback):
         else:
             finish_delete()
 
-    confirm_dialog(f"Delete contact '{name}'?", do_delete)
+    confirm_dialog(t("delete_contact_confirm", name=name), do_delete)
 
 
 def render_contact_row(parent, name, phones_text, category, note, created_at,
@@ -824,6 +1291,11 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
     if note:
         display_text += " 📝"
 
+    birthday = contacts.get(name, {}).get("birthday", "")
+    birthday_days_left = days_until_birthday(birthday) if birthday else None
+    if birthday_days_left is not None and birthday_days_left <= BIRTHDAY_REMINDER_WINDOW_DAYS:
+        display_text += " 🎂"
+
     make_button(master=row, text="✏️", width=30, height=25, fg_color=COLOR_PRIMARY,
                   hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 10, "bold"),
                   command=lambda: open_edit_window(name, refresh_callback)).pack(side="right", padx=5)
@@ -832,7 +1304,7 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
                   hover_color=COLOR_DANGER_HOVER, font=("Arial", 10, "bold"),
                   command=lambda: delete_contact(name, refresh_callback)).pack(side="right", padx=5)
 
-    ctk.CTkLabel(master=row, text=category, font=("Arial", 10, "bold"),
+    ctk.CTkLabel(master=row, text=category_label(category), font=("Arial", 10, "bold"),
                  fg_color=CATEGORY_COLORS.get(category, COLOR_GRAY), text_color="white",
                  corner_radius=6, width=60).pack(side="right", padx=5)
 
@@ -846,7 +1318,7 @@ def render_contact_row(parent, name, phones_text, category, note, created_at,
     def on_row_click(event=None):
         mark_contact_opened(name)
         if note:
-            confirm_dialog(f"Note for {name}:\n\n{note}", lambda: None, title="Note")
+            confirm_dialog(t("note_for", name=name) + f"\n\n{note}", lambda: None, title=t("note_title"))
 
     name_label.bind("<Button-1>", on_row_click)
 
@@ -893,8 +1365,21 @@ def display_contacts(items, refresh_callback, highlight=False, empty_message=Non
 
 
 def get_filtered_items():
-    selected_category = category_filter_var.get()
-    selected_sort = sort_var.get()
+    selected_category_display = category_filter_var.get()
+    selected_sort_display = sort_var.get()
+
+    # category_filter_var/sort_var хранят ПЕРЕВЕДЁННУЮ подпись (то, что видит
+    # пользователь в выпадающем списке) — находим соответствующий внутренний
+    # ключ, чтобы фильтрация/сортировка работала одинаково независимо от
+    # текущего языка интерфейса.
+    selected_category = next(
+        (c for c in [CATEGORY_ALL] + CATEGORIES if category_label(c) == selected_category_display),
+        CATEGORY_ALL
+    )
+    selected_sort = next(
+        (s for s in SORT_OPTIONS if sort_label(s) == selected_sort_display),
+        SORT_NAME_AZ
+    )
 
     items = list(contacts.items())
 
@@ -915,9 +1400,32 @@ def get_filtered_items():
     return items
 
 
+def update_stats_label():
+    """Обновляет виджет статистики (всего контактов / в избранном) на главном экране."""
+    if stats_label is not None:
+        stats_label.configure(
+            text=f"{t('stats_total', count=len(contacts))}    •    "
+                 f"{t('stats_favorites', count=len(favorites))}"
+        )
+
+
+def update_birthday_badge():
+    """Обновляет бейдж с количеством ближайших дней рождения на главном экране."""
+    if birthday_badge is None:
+        return
+    upcoming = get_upcoming_birthdays()
+    if upcoming:
+        birthday_badge.configure(text=t("birthday_badge", count=len(upcoming)))
+        birthday_badge.pack(side="left", padx=5)
+    else:
+        birthday_badge.pack_forget()
+
+
 def show_all_contacts():
-    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
-    display_contacts(get_filtered_items(), show_all_contacts, empty_message="No contacts in this category")
+    contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
+    display_contacts(get_filtered_items(), show_all_contacts, empty_message=t("no_contacts_in_category"))
+    update_stats_label()
+    update_birthday_badge()
 
 
 def show_all_contacts_animated():
@@ -931,16 +1439,20 @@ def show_all_contacts_animated():
     search_contact() без анимации — иначе строки "выезжали" бы заново при
     каждом действии пользователя, включая каждое нажатие клавиши при поиске.
     """
-    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+    contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
     display_contacts(get_filtered_items(), show_all_contacts,
-                      empty_message="No contacts in this category", animate=True)
+                      empty_message=t("no_contacts_in_category"), animate=True)
+    update_stats_label()
+    update_birthday_badge()
 
 
 def search_contact():
     query = search_entry.get().strip().lower()
     base_items = get_filtered_items()
     if not query:
-        display_contacts(base_items, search_contact, empty_message="No contacts in this category")
+        display_contacts(base_items, search_contact, empty_message=t("no_contacts_in_category"))
+        update_stats_label()
+        update_birthday_badge()
         return
 
     def contact_matches(data, name_lower):
@@ -956,25 +1468,28 @@ def search_contact():
         name_lower = n.lower()
         if contact_matches(d, name_lower):
             matches.append((n, d))
-    display_contacts(matches, search_contact, highlight=True, empty_message="Nothing found")
+    display_contacts(matches, search_contact, highlight=True, empty_message=t("nothing_found"))
+    update_stats_label()
+    update_birthday_badge()
 
 
 def open_add_contact_window():
-    base_height = 460
+    base_height = 500
     row_height = 46
 
-    win = make_toplevel("Add a contact", f"360x{base_height}")
+    win = make_toplevel(t("new_contact_title"), f"360x{base_height}")
 
-    ctk.CTkLabel(master=win, text="New contact", font=("Arial", 16, "bold")).pack(pady=(15, 10))
+    ctk.CTkLabel(master=win, text=t("new_contact_title"), font=("Arial", 16, "bold")).pack(pady=(15, 10))
 
-    name_entry = ctk.CTkEntry(master=win, placeholder_text="Contact name", width=260)
+    name_entry = ctk.CTkEntry(master=win, placeholder_text=t("name_placeholder"), width=260)
     name_entry.pack(pady=(0, 10))
 
-    category_var = ctk.StringVar(value=CATEGORIES[0])
-    category_menu = ctk.CTkOptionMenu(master=win, values=CATEGORIES, variable=category_var, width=260)
+    category_display_values = [category_label(c) for c in CATEGORIES]
+    category_var = ctk.StringVar(value=category_display_values[0])
+    category_menu = ctk.CTkOptionMenu(master=win, values=category_display_values, variable=category_var, width=260)
     category_menu.pack(pady=(0, 10))
 
-    ctk.CTkLabel(master=win, text="Phone numbers", font=("Arial", 12, "bold"),
+    ctk.CTkLabel(master=win, text=t("phone_numbers_label"), font=("Arial", 12, "bold"),
                  text_color="gray").pack(anchor="w", padx=30)
 
     phones_frame = ctk.CTkFrame(master=win, fg_color="transparent")
@@ -989,8 +1504,10 @@ def open_add_contact_window():
         row = ctk.CTkFrame(master=phones_frame, corner_radius=8)
         row.pack(fill="x", pady=4)
 
-        label_var = ctk.StringVar(value=label if label in PHONE_LABELS else "Other")
-        label_menu = ctk.CTkOptionMenu(master=row, values=PHONE_LABELS, variable=label_var, width=95)
+        label_key = label if label in PHONE_LABELS else "Other"
+        label_display_values = [phone_label_label(l) for l in PHONE_LABELS]
+        label_var = ctk.StringVar(value=phone_label_label(label_key))
+        label_menu = ctk.CTkOptionMenu(master=row, values=label_display_values, variable=label_var, width=95)
         label_menu.pack(side="left", padx=(8, 6), pady=8)
 
         number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text="Number")
@@ -999,7 +1516,7 @@ def open_add_contact_window():
 
         def remove_row():
             if len(phone_rows) <= 1:
-                error_label.configure(text="At least one number is required!", text_color="red")
+                error_label.configure(text=t("err_at_least_one_number"), text_color="red")
                 shake_widget(error_label)
                 return
             phone_rows.remove(entry_tuple)
@@ -1020,11 +1537,17 @@ def open_add_contact_window():
         add_phone_row()
         resize_window()
 
-    make_button(master=win, text="+ Add another number", width=180, height=30, fg_color=COLOR_GRAY,
+    make_button(master=win, text=t("add_another_number"), width=180, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, font=("Arial", 12),
                   command=add_new_row).pack(pady=(0, 10))
 
-    ctk.CTkLabel(master=win, text="Note (birthday, info, etc.)", font=("Arial", 12),
+    ctk.CTkLabel(master=win, text=t("birthday_label"), font=("Arial", 12),
+                 text_color="gray").pack(pady=(0, 0))
+
+    birthday_entry = ctk.CTkEntry(master=win, width=260, placeholder_text=t("birthday_placeholder"))
+    birthday_entry.pack(pady=(2, 8))
+
+    ctk.CTkLabel(master=win, text=t("note_label"), font=("Arial", 12),
                  text_color="gray").pack(pady=(0, 0))
 
     note_box = ctk.CTkTextbox(master=win, width=260, height=70)
@@ -1037,11 +1560,11 @@ def open_add_contact_window():
         name = name_entry.get().strip().title()
 
         if not name:
-            error_label.configure(text="Please fill in the name!", text_color="red")
+            error_label.configure(text=t("err_fill_name"), text_color="red")
             shake_widget(error_label)
             return
         if name in contacts:
-            error_label.configure(text="This contact name already exists! ⚠️", text_color="yellow")
+            error_label.configure(text=t("err_name_exists"), text_color="yellow")
             shake_widget(error_label)
             return
 
@@ -1051,23 +1574,42 @@ def open_add_contact_window():
             if not number:
                 continue
             if not number.isdigit():
-                error_label.configure(text="Numbers must consist of digits!", text_color="red")
+                error_label.configure(text=t("err_numbers_digits"), text_color="red")
                 shake_widget(error_label)
                 return
-            new_phones.append({"label": label_var.get(), "number": number})
+            display_value = label_var.get()
+            label_key = next(
+                (l for l in PHONE_LABELS if phone_label_label(l) == display_value),
+                "Other"
+            )
+            new_phones.append({"label": label_key, "number": number})
 
         if not new_phones:
-            error_label.configure(text="Add at least one phone number!", text_color="red")
+            error_label.configure(text=t("err_add_one_number"), text_color="red")
             shake_widget(error_label)
             return
+
+        birthday_raw = birthday_entry.get().strip()
+        new_birthday = _validate_birthday(birthday_raw) if birthday_raw else ""
+        if birthday_raw and not new_birthday:
+            error_label.configure(text=t("err_birthday_format"), text_color="red")
+            shake_widget(birthday_entry)
+            return
+
+        category_display_value = category_var.get()
+        category_key = next(
+            (c for c in CATEGORIES if category_label(c) == category_display_value),
+            "Other"
+        )
 
         note = note_box.get("1.0", "end").strip()
         contacts[name] = {
             "phones": new_phones,
-            "category": category_var.get(),
+            "category": category_key,
             "note": note,
             "created_at": time.time(),
             "usage_count": 0,
+            "birthday": new_birthday,
         }
         save_contacts()
         win.destroy()
@@ -1079,17 +1621,17 @@ def open_add_contact_window():
         # которая учитывает текущий фильтр/сортировку/поиск.
         search_contact()
 
-    make_button(master=win, text="Save", width=150, height=35, corner_radius=8,
+    make_button(master=win, text=t("save_btn"), width=150, height=35, corner_radius=8,
                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                   command=save_new_contact).pack(pady=8)
 
 
 def open_favorites_window():
-    fav_window = make_toplevel("Favorites", "400x450")
+    fav_window = make_toplevel(t("favorites_title"), "400x450")
 
-    ctk.CTkLabel(master=fav_window, text="⭐ Favorite Contacts", font=("Arial", 20, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=fav_window, text=t("favorites_title"), font=("Arial", 20, "bold")).pack(pady=15)
 
-    fav_entry = ctk.CTkEntry(master=fav_window, placeholder_text="Type name from list to add...", width=250)
+    fav_entry = ctk.CTkEntry(master=fav_window, placeholder_text=t("fav_entry_placeholder"), width=250)
     fav_entry.pack(pady=5)
 
     fav_scroll = ctk.CTkScrollableFrame(master=fav_window, width=320, height=200, corner_radius=8)
@@ -1100,7 +1642,7 @@ def open_favorites_window():
             widget.destroy()
 
         if not favorites:
-            ctk.CTkLabel(master=fav_scroll, text="Favorites list is empty", font=("Arial", 14, "italic"),
+            ctk.CTkLabel(master=fav_scroll, text=t("fav_empty"), font=("Arial", 14, "italic"),
                          text_color="gray").pack(pady=20)
             return
 
@@ -1132,13 +1674,13 @@ def open_favorites_window():
 
         if not matches:
             fav_entry.delete(0, "end")
-            fav_entry.configure(placeholder_text="No new matches found!", placeholder_text_color="red")
+            fav_entry.configure(placeholder_text=t("fav_no_matches"), placeholder_text_color="red")
             shake_widget(fav_entry)
             return
 
         if len(matches) > 1:
             fav_entry.delete(0, "end")
-            fav_entry.configure(placeholder_text="Multiple found! Be more specific.", placeholder_text_color="yellow")
+            fav_entry.configure(placeholder_text=t("fav_multiple_matches"), placeholder_text_color="yellow")
             shake_widget(fav_entry)
             return
 
@@ -1148,22 +1690,22 @@ def open_favorites_window():
             favorites.append(name_to_add)
             save_favorites()
             fav_entry.delete(0, "end")
-            fav_entry.configure(placeholder_text="Type name from list to add...", placeholder_text_color="gray")
+            fav_entry.configure(placeholder_text=t("fav_entry_placeholder"), placeholder_text_color="gray")
             refresh_fav_list()
             show_all_contacts()
 
-        confirm_dialog(f"Add '{name_to_add}' to favorites?", confirm_add, parent=fav_window)
+        confirm_dialog(t("fav_add_confirm", name=name_to_add), confirm_add, parent=fav_window)
 
-    make_button(master=fav_window, text="Add to favorites", width=150, height=30, fg_color=COLOR_PRIMARY,
+    make_button(master=fav_window, text=t("fav_add_btn"), width=150, height=30, fg_color=COLOR_PRIMARY,
                   command=add_to_fav).pack(pady=5)
 
     refresh_fav_list()
 
 
 def open_recent_window():
-    rec_window = make_toplevel("Recent", "400x450")
+    rec_window = make_toplevel(t("recent_title"), "400x450")
 
-    ctk.CTkLabel(master=rec_window, text="🕘 Recently Opened", font=("Arial", 20, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=rec_window, text=t("recent_title"), font=("Arial", 20, "bold")).pack(pady=15)
 
     rec_scroll = ctk.CTkScrollableFrame(master=rec_window, width=340, height=300, corner_radius=8)
     rec_scroll.pack(pady=10, padx=10, fill="both", expand=True)
@@ -1175,7 +1717,7 @@ def open_recent_window():
         valid_entries = [r for r in recent if r["name"] in contacts]
 
         if not valid_entries:
-            ctk.CTkLabel(master=rec_scroll, text="No recently opened contacts yet",
+            ctk.CTkLabel(master=rec_scroll, text=t("recent_empty"),
                          font=("Arial", 14, "italic"), text_color="gray").pack(pady=20)
             return
 
@@ -1187,7 +1729,7 @@ def open_recent_window():
             try:
                 when = datetime.fromtimestamp(entry["timestamp"]).strftime("%d.%m.%Y %H:%M")
             except (TypeError, ValueError, OSError):
-                when = "unknown"
+                when = "—"
 
             text_col = ctk.CTkFrame(master=row, fg_color="transparent")
             text_col.pack(side="left", fill="x", expand=True, padx=5)
@@ -1195,7 +1737,7 @@ def open_recent_window():
             ctk.CTkLabel(master=text_col, text=f"🕘 {name}: {all_phones_text(contacts[name])}",
                          font=("Arial", 13), anchor="w", wraplength=220, justify="left").pack(
                 anchor="w", fill="x")
-            ctk.CTkLabel(master=text_col, text=f"Opened {when}", font=("Arial", 10),
+            ctk.CTkLabel(master=text_col, text=t("recent_opened", when=when), font=("Arial", 10),
                          text_color="gray", anchor="w").pack(anchor="w", fill="x")
 
             make_button(master=row, text="🗑️", width=30, height=25, fg_color=COLOR_DANGER,
@@ -1213,9 +1755,9 @@ def open_recent_window():
             save_recent()
             refresh_recent_list()
 
-        confirm_dialog("Clear recent history?", do_clear, parent=rec_window, title="Clear Recent")
+        confirm_dialog(t("clear_recent_confirm"), do_clear, parent=rec_window, title=t("recent_title"))
 
-    make_button(master=rec_window, text="Clear history", width=150, height=30, fg_color=COLOR_GRAY,
+    make_button(master=rec_window, text=t("clear_history"), width=150, height=30, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, command=clear_recent).pack(pady=5)
 
     refresh_recent_list()
@@ -1899,6 +2441,7 @@ def _handle_global_hotkeys(event):
         if not _any_modal_window_open():
             _focus_search()
         return "break"
+
 
 app.bind_all("<KeyPress>", _handle_global_hotkeys)
 
