@@ -10,7 +10,7 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     PHOTOS_SUPPORTED = True
 except ImportError:
     PHOTOS_SUPPORTED = False
@@ -1052,21 +1052,79 @@ def ensure_photos_dir():
             pass
 
 
+def _center_crop_square(img):
+    """
+    Обрезает изображение по центру до квадрата (1:1), отрезая лишнее с
+    более длинной стороны. Например, широкое фото 1600x900 превратится в
+    900x900, взятое из горизонтального центра. Без этого фото с
+    непропорциональными сторонами растягивалось бы при показе в квадратном
+    превью/миниатюре, искажая лицо/объект на фото.
+    """
+    width, height = img.size
+    side = min(width, height)
+    left = (width - side) // 2
+    top = (height - side) // 2
+    return img.crop((left, top, left + side, top + side))
+
+
+def _load_and_normalize_image(path):
+    """
+    Открывает файл изображения и приводит его к предсказуемому, безопасному
+    для дальнейшей обработки виду. Это вынесено в отдельную функцию, чтобы
+    ОДНА И ТА ЖЕ нормализация применялась и для живого превью в окне
+    добавления/редактирования, и для финального сохранения на диск —
+    иначе превью могло бы выглядеть нормально, а сохранение почему-то
+    падать (или наоборот), что и создавало путаницу "не удаётся загрузить".
+
+    Шаги нормализации, каждый нужен для конкретного класса проблемных файлов:
+    1) ImageOps.exif_transpose — применяет EXIF-тег ориентации. Фото с
+       телефона часто хранятся "лежа" с тегом поворота; без этого шага
+       PIL показывает их в неверной ориентации (хотя технически открывает
+       без ошибки).
+    2) convert("RGBA") как промежуточный шаг для форматов с прозрачностью
+       или палитрой (PNG с альфа-каналом, индексированные GIF/PNG), затем
+       объединение с белым фоном и сведение в "RGB" — устраняет ошибки и
+       артефакты при последующем сохранении в JPEG (JPEG не поддерживает
+       прозрачность; "P"-палитра и "CMYK" из некоторых JPEG-редакторов
+       тоже могут вести себя непредсказуемо при прямом convert("RGB")).
+    3) Принудительная загрузка пикселей (img.load()) — на некоторых битых
+       или частично докачанных файлах PIL открывает заголовок без ошибки,
+       но падает позже при первом реальном обращении к пикселям; лучше
+       поймать это здесь явно, а не там, где могло бы выглядеть как
+       необъяснимый сбой в другом месте кода.
+
+    Бросает исключение при реально нечитаемом файле — вызывающий код
+    отвечает за обработку через try/except.
+    """
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "LA", "P"):
+        rgba = img.convert("RGBA")
+        background = Image.new("RGB", rgba.size, (255, 255, 255))
+        background.paste(rgba, mask=rgba.split()[-1])
+        img = background
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+    img.load()
+    return img
+
+
 def save_contact_photo(source_path):
     """
-    Копирует выбранный пользователем файл изображения в PHOTOS_DIR, уменьшая
-    его до PHOTO_MAX_DIMENSION по большей стороне и конвертируя в JPEG для
-    компактности. Возвращает имя сохранённого файла (для хранения в
-    contacts.json) или None при ошибке (файл повреждён, не изображение,
-    PIL недоступен и т.п.) — вызывающий код должен показать ошибку
-    пользователю в этом случае, а не считать, что фото сохранилось.
+    Копирует выбранный пользователем файл изображения в PHOTOS_DIR:
+    нормализует (см. _load_and_normalize_image), обрезает по центру до
+    квадрата (см. _center_crop_square) и уменьшает до PHOTO_MAX_DIMENSION,
+    затем сохраняет как JPEG. Возвращает имя сохранённого файла (для
+    хранения в contacts.json) или None при ошибке (файл повреждён, не
+    изображение, PIL недоступен и т.п.) — вызывающий код должен показать
+    ошибку пользователю в этом случае, а не считать, что фото сохранилось.
     """
     if not PHOTOS_SUPPORTED:
         return None
     ensure_photos_dir()
     try:
-        img = Image.open(source_path)
-        img = img.convert("RGB")  # отбрасываем альфа-канал/палитру для стабильного JPEG
+        img = _load_and_normalize_image(source_path)
+        img = _center_crop_square(img)
         img.thumbnail((PHOTO_MAX_DIMENSION, PHOTO_MAX_DIMENSION), Image.LANCZOS)
         filename = f"{uuid.uuid4().hex}.jpg"
         dest_path = os.path.join(PHOTOS_DIR, filename)
@@ -1205,7 +1263,8 @@ def open_edit_window(name, refresh_callback):
         # не было нажато "Удалить") > placeholder "нет фото".
         if selected_photo_path["path"]:
             try:
-                pil_image = Image.open(selected_photo_path["path"])
+                pil_image = _load_and_normalize_image(selected_photo_path["path"])
+                pil_image = _center_crop_square(pil_image)
                 preview_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=PHOTO_PREVIEW_SIZE)
                 photo_preview_label.configure(image=preview_image, text="")
                 photo_preview_label._preview_image_ref = preview_image
@@ -1741,7 +1800,8 @@ def open_add_contact_window():
             photo_preview_label.configure(image=None, text=t("no_photo_label"))
             return
         try:
-            pil_image = Image.open(path)
+            pil_image = _load_and_normalize_image(path)
+            pil_image = _center_crop_square(pil_image)
             preview_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=PHOTO_PREVIEW_SIZE)
             photo_preview_label.configure(image=preview_image, text="")
             # ссылка должна жить, иначе CTkImage может быть собран GC и
