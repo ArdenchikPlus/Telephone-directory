@@ -1,4 +1,5 @@
 {
     "theme": "dark",
-    "dup_threshold": "medium"
+    "dup_threshold": "medium",
+    "language": "en"
 }

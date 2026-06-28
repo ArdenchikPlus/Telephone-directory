@@ -455,13 +455,13 @@ def load_settings():
                 data.setdefault("dup_threshold", "medium")
                 if data["dup_threshold"] not in ("strict", "medium", "loose"):
                     data["dup_threshold"] = "medium"
-                data.setdefault("language", "ru")
+                data.setdefault("language", "en")
                 if data["language"] not in ("ru", "en"):
-                    data["language"] = "ru"
+                    data["language"] = "en"
                 return data
         except Exception:
             pass
-    return {"theme": "dark", "dup_threshold": "medium", "language": "ru"}
+    return {"theme": "dark", "dup_threshold": "medium", "language": "en"}
 
 
 def save_settings():
@@ -503,8 +503,8 @@ TRANSLATIONS = {
         "favorites": "Избранное",
         "recent": "Недавние",
         "find_duplicates": "Найти дубликаты",
-        "password_btn": "Пароль",
-        "change_password_btn": "Изменить пароль",
+        "password_btn": "🔐 Пароль",
+        "change_password_btn": "🔁 Изменить пароль",
         "clear_all": "Очистить всё",
         "settings": "Настройки",
         "hotkey_tip": "Подсказка: Ctrl+N — новый контакт   ·   Ctrl+F — поиск",
@@ -516,6 +516,7 @@ TRANSLATIONS = {
         "new_contact_title": "Новый контакт",
         "edit_contact_title": "Редактировать {name}",
         "name_placeholder": "Имя контакта",
+        "number_placeholder": "Номер",
         "phone_numbers_label": "Номера телефонов",
         "add_another_number": "+ Добавить номер",
         "birthday_label": "День рождения (необязательно)",
@@ -530,6 +531,7 @@ TRANSLATIONS = {
         "err_birthday_format": "Формат: ДД.ММ (например 05.09)",
         # Confirm dialogs
         "yes": "Да",
+        "confirm_title": "Подтверждение",
         "no": "Нет",
         "delete_contact_confirm": "Удалить контакт «{name}»?",
         "delete_all_confirm": "Удалить ВСЕ контакты?",
@@ -623,8 +625,8 @@ TRANSLATIONS = {
         "favorites": "Favorites",
         "recent": "Recent",
         "find_duplicates": "Find duplicates",
-        "password_btn": "Password",
-        "change_password_btn": "Change password",
+        "password_btn": "🔐 Password",
+        "change_password_btn": "🔁 Change password",
         "clear_all": "Clear all",
         "settings": "Settings",
         "hotkey_tip": "Tip: Ctrl+N — new contact   ·   Ctrl+F — search",
@@ -636,6 +638,7 @@ TRANSLATIONS = {
         "new_contact_title": "New contact",
         "edit_contact_title": "Edit {name}",
         "name_placeholder": "Contact name",
+        "number_placeholder": "Number",
         "phone_numbers_label": "Phone numbers",
         "add_another_number": "+ Add another number",
         "birthday_label": "Birthday (optional)",
@@ -650,6 +653,7 @@ TRANSLATIONS = {
         "err_birthday_format": "Format: DD.MM (e.g. 05.09)",
         # Confirm dialogs
         "yes": "Yes",
+        "confirm_title": "Confirm",
         "no": "No",
         "delete_contact_confirm": "Delete contact '{name}'?",
         "delete_all_confirm": "Delete ALL contacts?",
@@ -760,7 +764,7 @@ PHONE_LABEL_LABELS = {
 
 
 def current_language():
-    return app_settings.get("language", "ru")
+    return app_settings.get("language", "en")
 
 
 def t(key, **kwargs):
@@ -773,8 +777,8 @@ def t(key, **kwargs):
     непереведённый текст, который легко заметить и исправить.
     """
     lang = current_language()
-    table = TRANSLATIONS.get(lang, TRANSLATIONS["ru"])
-    template = table.get(key, TRANSLATIONS["ru"].get(key, key))
+    table = TRANSLATIONS.get(lang, TRANSLATIONS["en"])
+    template = table.get(key, TRANSLATIONS["en"].get(key, key))
     if kwargs:
         try:
             return template.format(**kwargs)
@@ -786,19 +790,19 @@ def t(key, **kwargs):
 def category_label(category_key):
     """Переводит внутренний ключ категории (например 'Work') в подпись на текущем языке."""
     lang = current_language()
-    return CATEGORY_LABELS.get(lang, CATEGORY_LABELS["ru"]).get(category_key, category_key)
+    return CATEGORY_LABELS.get(lang, CATEGORY_LABELS["en"]).get(category_key, category_key)
 
 
 def sort_label(sort_key):
     """Переводит внутренний ключ сортировки в подпись на текущем языке."""
     lang = current_language()
-    return SORT_LABELS.get(lang, SORT_LABELS["ru"]).get(sort_key, sort_key)
+    return SORT_LABELS.get(lang, SORT_LABELS["en"]).get(sort_key, sort_key)
 
 
 def phone_label_label(label_key):
     """Переводит внутренний ключ метки телефона (Mobile/Work/Home/Other) в подпись."""
     lang = current_language()
-    return PHONE_LABEL_LABELS.get(lang, PHONE_LABEL_LABELS["ru"]).get(label_key, label_key)
+    return PHONE_LABEL_LABELS.get(lang, PHONE_LABEL_LABELS["en"]).get(label_key, label_key)
 
 
 secret_data = load_secret()
@@ -1021,8 +1025,8 @@ def make_toplevel(title, size, parent=None):
     return win
 
 
-def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
-    win = make_toplevel(title, "280x130", parent)
+def confirm_dialog(message, on_confirm, parent=None, title=None):
+    win = make_toplevel(title if title is not None else t("confirm_title"), "280x130", parent)
 
     ctk.CTkLabel(master=win, text=message, font=("Arial", 14)).pack(pady=15)
 
@@ -1033,9 +1037,9 @@ def confirm_dialog(message, on_confirm, parent=None, title="Confirm"):
         on_confirm()
         win.destroy()
 
-    make_button(master=btn_frame, text="Yes", width=80, fg_color=COLOR_DANGER,
+    make_button(master=btn_frame, text=t("yes"), width=80, fg_color=COLOR_DANGER,
                   hover_color=COLOR_DANGER_HOVER, command=yes).pack(side="left", padx=10)
-    make_button(master=btn_frame, text="No", width=80, fg_color=COLOR_GRAY,
+    make_button(master=btn_frame, text=t("no"), width=80, fg_color=COLOR_GRAY,
                   hover_color=COLOR_GRAY_HOVER, command=win.destroy).pack(side="left", padx=10)
     return win
 
@@ -1079,7 +1083,7 @@ def open_edit_window(name, refresh_callback):
         label_menu = ctk.CTkOptionMenu(master=row, values=label_display_values, variable=label_var, width=95)
         label_menu.pack(side="left", padx=(8, 6), pady=8)
 
-        number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text="Number")
+        number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text=t("number_placeholder"))
         number_entry.insert(0, number)
         number_entry.pack(side="left", padx=(0, 6), pady=8)
 
@@ -1510,7 +1514,7 @@ def open_add_contact_window():
         label_menu = ctk.CTkOptionMenu(master=row, values=label_display_values, variable=label_var, width=95)
         label_menu.pack(side="left", padx=(8, 6), pady=8)
 
-        number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text="Number")
+        number_entry = ctk.CTkEntry(master=row, width=130, placeholder_text=t("number_placeholder"))
         number_entry.insert(0, number)
         number_entry.pack(side="left", padx=(0, 6), pady=8)
 
@@ -1837,6 +1841,7 @@ def merge_contacts(names_to_merge, win_to_close=None):
     merged_notes = []
     earliest_created_at = None
     merged_usage_count = 0
+    merged_birthday = ""
 
     for name in names_to_merge:
         if name not in contacts:
@@ -1855,6 +1860,8 @@ def merge_contacts(names_to_merge, win_to_close=None):
             if earliest_created_at is None or c_at < earliest_created_at:
                 earliest_created_at = c_at
         merged_usage_count += data.get("usage_count", 0)
+        if not merged_birthday and data.get("birthday"):
+            merged_birthday = data["birthday"]
 
     primary_name = names_to_merge[0]
 
@@ -1873,12 +1880,13 @@ def merge_contacts(names_to_merge, win_to_close=None):
         "note": " / ".join(merged_notes),
         "created_at": earliest_created_at if earliest_created_at is not None else time.time(),
         "usage_count": merged_usage_count,
+        "birthday": merged_birthday,
     }
 
     save_contacts()
     save_favorites()
     save_recent()
-    contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+    contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
     show_all_contacts()
 
     if win_to_close is not None:
@@ -1888,12 +1896,12 @@ def merge_contacts(names_to_merge, win_to_close=None):
 def open_duplicates_window():
     groups = find_duplicate_groups()
 
-    win = make_toplevel("Possible duplicates", "380x480")
+    win = make_toplevel(t("duplicates_title"), "380x480")
 
-    ctk.CTkLabel(master=win, text="🔍 Possible Duplicates", font=("Arial", 18, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=win, text=t("duplicates_title"), font=("Arial", 18, "bold")).pack(pady=15)
 
     if not groups:
-        ctk.CTkLabel(master=win, text="No duplicates found! 🎉", font=("Arial", 14, "italic"),
+        ctk.CTkLabel(master=win, text=t("no_duplicates"), font=("Arial", 14, "italic"),
                      text_color="gray").pack(pady=40)
         return
 
@@ -1906,7 +1914,7 @@ def open_duplicates_window():
 
         current_groups = find_duplicate_groups()
         if not current_groups:
-            ctk.CTkLabel(master=scroll, text="No more duplicates! 🎉", font=("Arial", 14, "italic"),
+            ctk.CTkLabel(master=scroll, text=t("no_more_duplicates"), font=("Arial", 14, "italic"),
                          text_color="gray").pack(pady=40)
             return
 
@@ -1931,11 +1939,11 @@ def open_duplicates_window():
                     render_groups()
 
                 confirm_dialog(
-                    f"Merge {', '.join(g)} into one contact?\nAll numbers will be combined.",
-                    confirmed, parent=win, title="Merge contacts"
+                    t("merge_confirm", names=", ".join(g)),
+                    confirmed, parent=win, title=t("merge_title")
                 )
 
-            make_button(master=card, text="Merge into one", width=150, height=28,
+            make_button(master=card, text=t("merge_btn"), width=150, height=28,
                           fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                           font=("Arial", 12), command=do_merge).pack(pady=(8, 10))
 
@@ -1961,10 +1969,10 @@ def export_contacts_to_file():
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(export_payload, f, ensure_ascii=False, indent=4)
-        confirm_dialog(f"Exported {len(contacts)} contact(s) successfully!", lambda: None,
-                       title="Export complete")
+        confirm_dialog(t("export_success", count=len(contacts)), lambda: None,
+                       title=t("export_complete_title"))
     except Exception as e:
-        confirm_dialog(f"Export failed:\n{e}", lambda: None, title="Export error")
+        confirm_dialog(t("export_failed", error=e), lambda: None, title=t("export_error_title"))
 
 
 def import_contacts_from_file(parent=None):
@@ -1979,12 +1987,12 @@ def import_contacts_from_file(parent=None):
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except Exception as e:
-        confirm_dialog(f"Import failed:\n{e}", lambda: None, parent=parent, title="Import error")
+        confirm_dialog(t("import_failed", error=e), lambda: None, parent=parent, title=t("import_error_title"))
         return
 
     if not isinstance(raw, dict) or "contacts" not in raw:
-        confirm_dialog("This file doesn't look like a valid phonebook export.", lambda: None,
-                       parent=parent, title="Import error")
+        confirm_dialog(t("import_invalid_file"), lambda: None,
+                       parent=parent, title=t("import_error_title"))
         return
 
     imported_contacts = migrate_contacts(raw.get("contacts", {}))
@@ -1997,7 +2005,7 @@ def import_contacts_from_file(parent=None):
                 favorites.append(fav)
         save_contacts()
         save_favorites()
-        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+        contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
         show_all_contacts()
 
     def do_replace():
@@ -2006,13 +2014,13 @@ def import_contacts_from_file(parent=None):
         favorites[:] = [f for f in imported_favorites if f in contacts]
         save_contacts()
         save_favorites()
-        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+        contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
         show_all_contacts()
 
-    choice_win = make_toplevel("Import options", "320x220", parent)
-    ctk.CTkLabel(master=choice_win, text=f"Found {len(imported_contacts)} contact(s)",
+    choice_win = make_toplevel(t("import_options_title"), "320x220", parent)
+    ctk.CTkLabel(master=choice_win, text=t("import_found", count=len(imported_contacts)),
                  font=("Arial", 14, "bold")).pack(pady=(20, 5))
-    ctk.CTkLabel(master=choice_win, text="How do you want to import them?",
+    ctk.CTkLabel(master=choice_win, text=t("import_how"),
                  font=("Arial", 12), text_color="gray").pack(pady=(0, 15))
 
     def confirm_merge():
@@ -2024,13 +2032,13 @@ def import_contacts_from_file(parent=None):
             choice_win.destroy()
             do_replace()
 
-        confirm_dialog("This will delete your current contacts and replace them. Continue?",
-                       really_replace, parent=choice_win, title="Replace all")
+        confirm_dialog(t("import_replace_confirm"),
+                       really_replace, parent=choice_win, title=t("import_replace_title"))
 
-    make_button(master=choice_win, text="Merge with existing", width=220, height=35,
+    make_button(master=choice_win, text=t("import_merge_btn"), width=220, height=35,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=confirm_merge).pack(pady=5)
-    make_button(master=choice_win, text="Replace all contacts", width=220, height=35,
+    make_button(master=choice_win, text=t("import_replace_btn"), width=220, height=35,
                   fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
                   command=confirm_replace).pack(pady=5)
 
@@ -2046,10 +2054,10 @@ def clear_all_contacts_window():
         save_contacts()
         save_favorites()
         save_recent()
-        contacts_frame.configure(label_text=f"Contact list ({len(contacts)})")
+        contacts_frame.configure(label_text=t("contact_list", count=len(contacts)))
         show_all_contacts()
 
-    confirm_dialog("Delete ALL contacts?", do_clear, title="Clear Book")
+    confirm_dialog(t("delete_all_confirm"), do_clear, title=t("clear_all"))
 
 
 def set_theme(theme_name, theme_var=None):
@@ -2065,33 +2073,108 @@ def set_dup_threshold(level):
     save_settings()
 
 
-def open_settings_window():
-    win = make_toplevel("Settings", "380x660")
+def set_language(lang_code, settings_win=None):
+    """
+    Переключает язык интерфейса (RU/EN) и пересобирает главный экран, чтобы
+    все надписи на нём обновились.
 
-    ctk.CTkLabel(master=win, text="⚙️ Settings", font=("Arial", 18, "bold")).pack(pady=(20, 15))
+    Settings-окно, из которого вызван переключатель (если есть), закрывается
+    перед пересборкой — иначе оно осталось бы "осиротевшим" на старом языке
+    после того, как главный экран пересоберётся.
+
+    Если открыто ЛЮБОЕ другое модальное окно (добавление/редактирование
+    контакта, пароль, избранное и т.п.), переключение игнорируется —
+    пересборка главного экрана "под" таким окном оставила бы его ссылающимся
+    на уже уничтоженные виджеты. Это касается и переключателя на главном
+    экране, и переключателя внутри Settings.
+    """
+    if lang_code not in ("ru", "en"):
+        return
+
+    other_windows_open = len([
+        c for c in app.winfo_children()
+        if isinstance(c, ctk.CTkToplevel) and c.winfo_exists() and c is not settings_win
+    ]) > 0
+    if other_windows_open:
+        return
+
+    app_settings["language"] = lang_code
+    save_settings()
+    if settings_win is not None:
+        settings_win.destroy()
+    rebuild_main_screen()
+
+
+def open_settings_window():
+    win = make_toplevel(t("settings_title"), "380x780")
+
+    ctk.CTkLabel(master=win, text=t("settings_title"), font=("Arial", 18, "bold")).pack(pady=(20, 15))
 
     theme_section = ctk.CTkFrame(master=win, corner_radius=8)
     theme_section.pack(fill="x", padx=20, pady=8)
 
-    ctk.CTkLabel(master=theme_section, text="Appearance", font=("Arial", 13, "bold")).pack(
+    ctk.CTkLabel(master=theme_section, text=t("appearance_label"), font=("Arial", 13, "bold")).pack(
         anchor="w", padx=12, pady=(10, 5))
 
     theme_var = ctk.StringVar(value=app_settings["theme"])
     theme_row = ctk.CTkFrame(master=theme_section, fg_color="transparent")
     theme_row.pack(fill="x", padx=12, pady=(0, 12))
 
-    ctk.CTkRadioButton(master=theme_row, text="🌙 Dark", variable=theme_var, value="dark",
+    ctk.CTkRadioButton(master=theme_row, text=t("theme_dark"), variable=theme_var, value="dark",
                         command=lambda: set_theme("dark", theme_var)).pack(side="left", padx=(0, 20))
-    ctk.CTkRadioButton(master=theme_row, text="☀️ Light", variable=theme_var, value="light",
+    ctk.CTkRadioButton(master=theme_row, text=t("theme_light"), variable=theme_var, value="light",
                         command=lambda: set_theme("light", theme_var)).pack(side="left")
+
+    language_section = ctk.CTkFrame(master=win, corner_radius=8)
+    language_section.pack(fill="x", padx=20, pady=8)
+
+    ctk.CTkLabel(master=language_section, text=t("language_label"), font=("Arial", 13, "bold")).pack(
+        anchor="w", padx=12, pady=(10, 5))
+
+    # Язык можно переключить только когда нет других открытых окон (кроме
+    # самого Settings) — пересборка главного экрана "на лету" при открытом
+    # окне добавления контакта/паролей и т.п. могла бы оставить то окно
+    # ссылающимся на уничтоженные виджеты главного экрана. Поэтому при
+    # наличии других окон переключатель блокируется, и поясняющая надпись
+    # объясняет, почему.
+    other_windows_open = len([
+        c for c in app.winfo_children()
+        if isinstance(c, ctk.CTkToplevel) and c.winfo_exists() and c is not win
+    ]) > 0
+
+    language_row = ctk.CTkFrame(master=language_section, fg_color="transparent")
+    language_row.pack(fill="x", padx=12, pady=(0, 4))
+
+    lang_state = "disabled" if other_windows_open else "normal"
+
+    ru_btn = make_button(master=language_row, text="Русский", width=120, height=30,
+                          fg_color=COLOR_PRIMARY if current_language() == "ru" else COLOR_GRAY,
+                          hover_color=COLOR_PRIMARY_HOVER if current_language() == "ru" else COLOR_GRAY_HOVER,
+                          state=lang_state,
+                          command=lambda: set_language("ru", win))
+    ru_btn.pack(side="left", padx=(0, 8))
+
+    en_btn = make_button(master=language_row, text="English", width=120, height=30,
+                          fg_color=COLOR_PRIMARY if current_language() == "en" else COLOR_GRAY,
+                          hover_color=COLOR_PRIMARY_HOVER if current_language() == "en" else COLOR_GRAY_HOVER,
+                          state=lang_state,
+                          command=lambda: set_language("en", win))
+    en_btn.pack(side="left")
+
+    if other_windows_open:
+        ctk.CTkLabel(master=language_section, text=t("language_locked"), font=("Arial", 10),
+                     text_color="gray", wraplength=320, justify="left").pack(
+            anchor="w", padx=12, pady=(6, 10))
+    else:
+        ctk.CTkLabel(master=language_section, text="", font=("Arial", 10)).pack(pady=(6, 10))
 
     dup_section = ctk.CTkFrame(master=win, corner_radius=8)
     dup_section.pack(fill="x", padx=20, pady=8)
 
-    ctk.CTkLabel(master=dup_section, text="Duplicate detection sensitivity",
+    ctk.CTkLabel(master=dup_section, text=t("dup_sensitivity_label"),
                  font=("Arial", 13, "bold")).pack(anchor="w", padx=12, pady=(10, 2))
     ctk.CTkLabel(master=dup_section,
-                 text="How strict the name-matching is when looking for duplicates",
+                 text=t("dup_sensitivity_desc"),
                  font=("Arial", 11), text_color="gray", wraplength=320, justify="left").pack(
         anchor="w", padx=12, pady=(0, 8))
 
@@ -2105,26 +2188,26 @@ def open_settings_window():
     data_section = ctk.CTkFrame(master=win, corner_radius=8)
     data_section.pack(fill="x", padx=20, pady=8)
 
-    ctk.CTkLabel(master=data_section, text="Backup & restore", font=("Arial", 13, "bold")).pack(
+    ctk.CTkLabel(master=data_section, text=t("backup_label"), font=("Arial", 13, "bold")).pack(
         anchor="w", padx=12, pady=(10, 8))
 
-    make_button(master=data_section, text="⬇️ Export contacts to JSON", width=260, height=35,
+    make_button(master=data_section, text=t("export_btn"), width=260, height=35,
                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
                   command=export_contacts_to_file).pack(padx=12, pady=(0, 8))
 
-    make_button(master=data_section, text="⬆️ Import contacts from JSON", width=260, height=35,
+    make_button(master=data_section, text=t("import_btn"), width=260, height=35,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=lambda: import_contacts_from_file(win)).pack(padx=12, pady=(0, 12))
 
     hotkeys_section = ctk.CTkFrame(master=win, corner_radius=8)
     hotkeys_section.pack(fill="x", padx=20, pady=8)
 
-    ctk.CTkLabel(master=hotkeys_section, text="⌨️ Keyboard shortcuts", font=("Arial", 13, "bold")).pack(
+    ctk.CTkLabel(master=hotkeys_section, text=t("hotkeys_label"), font=("Arial", 13, "bold")).pack(
         anchor="w", padx=12, pady=(10, 8))
 
     shortcuts = [
-        ("Ctrl + N", "Add a new contact"),
-        ("Ctrl + F", "Jump to the search field"),
+        ("Ctrl + N", t("hotkey_new_contact")),
+        ("Ctrl + F", t("hotkey_search")),
     ]
 
     for keys, description in shortcuts:
@@ -2138,7 +2221,7 @@ def open_settings_window():
 
 
 def update_password_button_text():
-    password_button.configure(text="🔁 Change password" if secret_data["password"] else "🔐 Password")
+    password_button.configure(text=t("change_password_btn") if secret_data["password"] else t("password_btn"))
 
 
 def reencrypt_data(old_key, new_key):
@@ -2155,14 +2238,14 @@ def reencrypt_data(old_key, new_key):
 
 
 def open_set_password_window(parent=None):
-    win = make_toplevel("Set Password", "320x340", parent)
+    win = make_toplevel(t("set_password_title"), "320x340", parent)
 
-    ctk.CTkLabel(master=win, text="Set Master Password", font=("Arial", 16, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=win, text=t("set_password_title"), font=("Arial", 16, "bold")).pack(pady=15)
 
-    pass_entry = ctk.CTkEntry(master=win, placeholder_text="New password", width=250, show="*")
+    pass_entry = ctk.CTkEntry(master=win, placeholder_text=t("new_password_placeholder"), width=250, show="*")
     pass_entry.pack(pady=8)
 
-    hint_entry = ctk.CTkEntry(master=win, placeholder_text="Hint (optional)", width=250)
+    hint_entry = ctk.CTkEntry(master=win, placeholder_text=t("hint_placeholder"), width=250)
     hint_entry.pack(pady=8)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
@@ -2173,7 +2256,7 @@ def open_set_password_window(parent=None):
         entered = pass_entry.get().strip()
         hint = hint_entry.get().strip()
         if not entered:
-            error_label.configure(text="Password cannot be empty!", text_color="red")
+            error_label.configure(text=t("err_password_empty"), text_color="red")
             shake_widget(pass_entry)
             return
 
@@ -2188,25 +2271,25 @@ def open_set_password_window(parent=None):
         update_password_button_text()
         win.destroy()
 
-    make_button(master=win, text="Confirm", width=150, fg_color=COLOR_SUCCESS,
+    make_button(master=win, text=t("confirm_btn"), width=150, fg_color=COLOR_SUCCESS,
                   hover_color=COLOR_SUCCESS_HOVER, command=confirm_set_password).pack(pady=15)
     pass_entry.bind("<Return>", lambda event: confirm_set_password())
     pass_entry.focus()
 
 
 def open_forgot_password_window(parent):
-    win = make_toplevel("Forgot Password", "320x260", parent)
+    win = make_toplevel(t("password_recovery_title"), "320x260", parent)
 
-    ctk.CTkLabel(master=win, text="Password Recovery", font=("Arial", 16, "bold")).pack(pady=15)
+    ctk.CTkLabel(master=win, text=t("password_recovery_title"), font=("Arial", 16, "bold")).pack(pady=15)
 
     if not secret_data["hint"]:
-        ctk.CTkLabel(master=win, text="No hint was set for this password.",
+        ctk.CTkLabel(master=win, text=t("no_hint_set"),
                      font=("Arial", 13), text_color="gray", wraplength=260).pack(pady=20)
         return
 
-    ctk.CTkLabel(master=win, text="Enter the hint answer:", font=("Arial", 13)).pack(pady=5)
+    ctk.CTkLabel(master=win, text=t("enter_hint_answer"), font=("Arial", 13)).pack(pady=5)
 
-    hint_entry = ctk.CTkEntry(master=win, placeholder_text="Hint answer", width=250)
+    hint_entry = ctk.CTkEntry(master=win, placeholder_text=t("hint_answer_placeholder"), width=250)
     hint_entry.pack(pady=8)
 
     result_label = ctk.CTkLabel(master=win, text="", font=("Arial", 14, "bold"), wraplength=260)
@@ -2215,11 +2298,12 @@ def open_forgot_password_window(parent):
     def check_hint():
         answer = hint_entry.get().strip()
         if answer == secret_data["hint"]:
-            result_label.configure(text=f"Your password: {secret_data['password']}", text_color="#2cb67d")
+            result_label.configure(text=t("your_password_is", password=secret_data["password"]),
+                                    text_color="#2cb67d")
         else:
-            result_label.configure(text="Incorrect hint answer!", text_color="red")
+            result_label.configure(text=t("wrong_hint"), text_color="red")
 
-    make_button(master=win, text="Check", width=150, fg_color=COLOR_PRIMARY,
+    make_button(master=win, text=t("check_btn"), width=150, fg_color=COLOR_PRIMARY,
                   hover_color=COLOR_PRIMARY_HOVER, command=check_hint).pack(pady=10)
     hint_entry.bind("<Return>", lambda event: check_hint())
     hint_entry.focus()
@@ -2240,54 +2324,54 @@ def open_reset_password_window(parent):
         parent.destroy()
         show_all_contacts()
 
-    confirm_dialog("Reset password? This removes the master password.", do_reset,
-                   parent=parent, title="Reset Password")
+    confirm_dialog(t("reset_password_confirm"), do_reset,
+                   parent=parent, title=t("reset_password_title"))
 
 
 def open_password_window():
-    win = make_toplevel("Password", "320x400")
+    win = make_toplevel(t("password_btn"), "320x400")
 
     if not secret_data["password"]:
         win.destroy()
         open_set_password_window()
         return
 
-    ctk.CTkLabel(master=win, text="🔐 Manage Password", font=("Arial", 18, "bold")).pack(pady=20)
+    ctk.CTkLabel(master=win, text=t("manage_password_title"), font=("Arial", 18, "bold")).pack(pady=20)
 
-    make_button(master=win, text="Change password", width=220, height=38, corner_radius=8,
+    make_button(master=win, text=t("change_password_btn"), width=220, height=38, corner_radius=8,
                   fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
                   command=lambda: open_set_password_window(win)).pack(pady=8)
 
-    make_button(master=win, text="Reset password", width=220, height=38, corner_radius=8,
+    make_button(master=win, text=t("reset_password_btn"), width=220, height=38, corner_radius=8,
                   fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
                   command=lambda: open_reset_password_window(win)).pack(pady=8)
 
-    make_button(master=win, text="Forgot password?", width=220, height=38, corner_radius=8,
+    make_button(master=win, text=t("forgot_password_btn"), width=220, height=38, corner_radius=8,
                   fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER,
                   command=lambda: open_forgot_password_window(win)).pack(pady=8)
 
 
 def show_lock_screen(on_success):
     win = ctk.CTkToplevel(app)
-    win.title("Locked")
+    win.title(t("enter_password_title"))
     win.geometry("340x360")
     win.resizable(False, False)
     win.attributes("-topmost", True)
     win.protocol("WM_DELETE_WINDOW", lambda: sys.exit(0))
     fade_in_window(win, target_size="340x360")
 
-    ctk.CTkLabel(master=win, text="🔒 Enter Password", font=("Arial", 18, "bold")).pack(pady=20)
+    ctk.CTkLabel(master=win, text=t("enter_password_title"), font=("Arial", 18, "bold")).pack(pady=20)
 
-    pass_entry = ctk.CTkEntry(master=win, placeholder_text="Password", width=220, show="*")
+    pass_entry = ctk.CTkEntry(master=win, placeholder_text=t("password_placeholder"), width=220, show="*")
     pass_entry.pack(pady=10)
 
     error_label = ctk.CTkLabel(master=win, text="", font=("Arial", 12))
     error_label.pack(pady=5)
 
-    unlock_button = make_button(master=win, text="Unlock", width=150, command=lambda: try_unlock())
+    unlock_button = make_button(master=win, text=t("unlock_btn"), width=150, command=lambda: try_unlock())
     unlock_button.pack(pady=10)
 
-    forgot_button = make_button(master=win, text="Forgot password?", width=180, fg_color=COLOR_GRAY,
+    forgot_button = make_button(master=win, text=t("forgot_password_btn"), width=180, fg_color=COLOR_GRAY,
                                    hover_color=COLOR_GRAY_HOVER,
                                    command=lambda: open_forgot_password_window(win))
     forgot_button.pack(pady=10)
@@ -2311,7 +2395,7 @@ def show_lock_screen(on_success):
             countdown_job["id"] = None
             return
         error_label.configure(
-            text=f"Too many attempts! Wait {int(remaining) + 1}s ⏳", text_color="red"
+            text=t("too_many_attempts", seconds=int(remaining) + 1), text_color="red"
         )
         countdown_job["id"] = win.after(250, update_countdown)
 
@@ -2343,7 +2427,7 @@ def show_lock_screen(on_success):
                 start_lockout()
             else:
                 error_label.configure(
-                    text=f"Wrong password! ❌ ({remaining_tries} attempt(s) left)",
+                    text=t("wrong_password", tries=remaining_tries),
                     text_color="red"
                 )
             return
@@ -2368,44 +2452,24 @@ ctk.set_appearance_mode(app_settings["theme"])
 ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
-app.title("Phonebook v1.0")
 app.geometry("560x870")
 app.minsize(540, 800)
 app.resizable(True, True)
 
-ctk.CTkLabel(master=app, text="Telephone directory", font=("Arial", 24, "bold")).pack(pady=20)
-
-search_entry = ctk.CTkEntry(master=app, placeholder_text="Enter a name or number to search...",
-                             width=350, height=40, corner_radius=8)
-search_entry.pack(pady=10)
-search_entry.bind("<KeyRelease>", lambda event: search_contact())
-
-# ---------------------------------------------------------------------------
-# Горячие клавиши.
-#
-# ПОЧЕМУ ПРЕДЫДУЩИЕ ВЕРСИИ НЕ РАБОТАЛИ:
-# Именованные event-последовательности вида "<Control-f>" в Tk обрабатываются
-# по системе bindtags с конкретным порядком: instance -> toplevel -> class ->
-# application. У Entry-виджетов (а CTkEntry использует обычный tkinter.Entry
-# внутри себя) на уровне КЛАССА встроены emacs-style биндинги именно на
-# "<Control-f>" / "<Control-n>" (наследие emacs/readline: "курсор вперёд",
-# "следующая строка"). Когда такой class-level бинд обрабатывает событие, он
-# может прервать дальнейшую передачу — и bind_all/app.bind на ту же именную
-# последовательность просто не вызывается. Попытка отвязать конфликт через
-# unbind_class тоже не помогла, так как она требует точного совпадения формы
-# события с тем, как он зарегистрирован внутри Tcl/Tk — это легко не совпадает.
-#
-# РЕШЕНИЕ — низкоуровневый, проверенный паттерн:
-# Вместо именованной последовательности "<Control-f>" слушаем общее событие
-# "<KeyPress>" через bind_all и сами проверяем event.state (битовая маска
-# модификаторов — бит 0x4 означает "зажат Control") и event.keysym (имя
-# клавиши). "<KeyPress>" — это ДРУГОЕ событие, отдельное от именованных
-# sequence-биндов вроде "<Control-f>", поэтому оно не конкурирует с
-# встроенными class-level биндами Entry и гарантированно доходит до нас
-# независимо от того, какой виджет в фокусе.
-# ---------------------------------------------------------------------------
-
 CONTROL_STATE_MASK = 0x4  # бит в event.state, выставленный при зажатом Ctrl
+
+# Виджеты главного экрана хранятся в глобальных переменных, чтобы остальные
+# функции (show_all_contacts, search_contact, update_stats_label и т.д.)
+# могли их использовать. При смене языка build_main_screen() вызывается
+# повторно, и эти переменные переприсваиваются на новые виджеты — поэтому
+# везде, где они используются, обращение идёт по имени, а не по ссылке,
+# взятой "один раз и навсегда".
+search_entry = None
+category_filter_var = None
+sort_var = None
+contacts_frame = None
+btn_frame = None
+password_button = None
 
 
 def _any_modal_window_open():
@@ -2443,88 +2507,198 @@ def _handle_global_hotkeys(event):
         return "break"
 
 
+def open_birthday_list_window():
+    """Показывает список контактов с ближайшими (в пределах недели) днями рождения."""
+    upcoming = get_upcoming_birthdays()
+    win = make_toplevel(t("birthday_badge_tooltip"), "360x420")
+
+    ctk.CTkLabel(master=win, text="🎂 " + t("birthday_badge_tooltip"),
+                 font=("Arial", 18, "bold")).pack(pady=15)
+
+    scroll = ctk.CTkScrollableFrame(master=win, width=320, height=300, corner_radius=8)
+    scroll.pack(pady=10, padx=10, fill="both", expand=True)
+
+    for name, days_left in upcoming:
+        row = ctk.CTkFrame(master=scroll, fg_color="transparent")
+        row.pack(fill="x", padx=5, pady=3)
+
+        if days_left == 0:
+            when_text = "🎉"
+        elif current_language() == "ru":
+            when_text = f"через {days_left} дн." if days_left != 1 else "завтра"
+        else:
+            when_text = f"in {days_left} day(s)" if days_left != 1 else "tomorrow"
+
+        birthday = contacts.get(name, {}).get("birthday", "")
+        ctk.CTkLabel(master=row, text=f"🎂 {name} — {birthday}", font=("Arial", 14),
+                     anchor="w", wraplength=180, justify="left").pack(side="left", padx=5)
+        ctk.CTkLabel(master=row, text=when_text, font=("Arial", 12, "bold"),
+                     text_color=COLOR_SUCCESS).pack(side="right", padx=5)
+
+
+def build_main_screen():
+    """
+    Создаёт все виджеты главного экрана. Вынесена в отдельную функцию, чтобы
+    при смене языка интерфейса (set_language) можно было полностью пересобрать
+    главный экран на новом языке без перезапуска приложения.
+    """
+    global search_entry, category_filter_var, sort_var, contacts_frame
+    global btn_frame, password_button, stats_label, birthday_badge
+
+    app.title(t("app_title"))
+
+    # Переключатель языка — в правом верхнем углу главного экрана, всегда на
+    # виду, без необходимости заходить в Settings. set_language(lang, None)
+    # вызывается без settings-окна для закрытия, так как переключатель здесь
+    # стоит непосредственно на главном экране.
+    lang_switch_row = ctk.CTkFrame(master=app, fg_color="transparent")
+    lang_switch_row.pack(fill="x", padx=15, pady=(10, 0))
+
+    lang_switch_inner = ctk.CTkFrame(master=lang_switch_row, fg_color="transparent")
+    lang_switch_inner.pack(side="right")
+
+    is_ru = current_language() == "ru"
+    make_button(
+        master=lang_switch_inner, text="RU", width=44, height=26, corner_radius=6,
+        fg_color=COLOR_PRIMARY if is_ru else COLOR_GRAY,
+        hover_color=COLOR_PRIMARY_HOVER if is_ru else COLOR_GRAY_HOVER,
+        font=("Arial", 11, "bold"),
+        command=lambda: set_language("ru")
+    ).pack(side="left", padx=(0, 4))
+
+    make_button(
+        master=lang_switch_inner, text="EN", width=44, height=26, corner_radius=6,
+        fg_color=COLOR_PRIMARY if not is_ru else COLOR_GRAY,
+        hover_color=COLOR_PRIMARY_HOVER if not is_ru else COLOR_GRAY_HOVER,
+        font=("Arial", 11, "bold"),
+        command=lambda: set_language("en")
+    ).pack(side="left")
+
+    ctk.CTkLabel(master=app, text=t("app_title"), font=("Arial", 24, "bold")).pack(pady=(10, 20))
+
+    search_entry = ctk.CTkEntry(master=app, placeholder_text=t("search_placeholder"),
+                                 width=350, height=40, corner_radius=8)
+    search_entry.pack(pady=10)
+    search_entry.bind("<KeyRelease>", lambda event: search_contact())
+
+    filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+    filter_frame.pack(pady=5)
+
+    category_row = ctk.CTkFrame(master=filter_frame, fg_color="transparent")
+    category_row.pack(pady=2)
+
+    ctk.CTkLabel(master=category_row, text=t("category_label"), font=("Arial", 13), width=70, anchor="e").pack(
+        side="left", padx=5)
+
+    category_display_values = [category_label(c) for c in [CATEGORY_ALL] + CATEGORIES]
+    category_filter_var = ctk.StringVar(value=category_label(CATEGORY_ALL))
+    category_filter_menu = ctk.CTkOptionMenu(
+        master=category_row, values=category_display_values, variable=category_filter_var,
+        width=180, command=lambda choice: search_contact()
+    )
+    category_filter_menu.pack(side="left", padx=5)
+
+    sort_row = ctk.CTkFrame(master=filter_frame, fg_color="transparent")
+    sort_row.pack(pady=2)
+
+    ctk.CTkLabel(master=sort_row, text=t("sort_label"), font=("Arial", 13), width=70, anchor="e").pack(
+        side="left", padx=5)
+
+    sort_display_values = [sort_label(s) for s in SORT_OPTIONS]
+    sort_var = ctk.StringVar(value=sort_label(SORT_NAME_AZ))
+    sort_menu = ctk.CTkOptionMenu(
+        master=sort_row, values=sort_display_values, variable=sort_var,
+        width=180, command=lambda choice: search_contact()
+    )
+    sort_menu.pack(side="left", padx=5)
+
+    contacts_frame = ctk.CTkScrollableFrame(
+        master=app, width=400, height=280, corner_radius=8,
+        label_text=t("contact_list", count=len(contacts)), label_font=("Arial", 12, "bold")
+    )
+    contacts_frame.pack(pady=20)
+
+    btn_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+    btn_frame.pack(pady=10)
+
+    make_button(master=btn_frame, text=t("add_contact"), width=170, height=40, corner_radius=8,
+                  fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER, font=("Arial", 14, "bold"),
+                  command=open_add_contact_window).pack(side="left", padx=5)
+
+    make_button(master=btn_frame, text=t("favorites"), width=170, height=40, corner_radius=8,
+                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 14, "bold"),
+                  command=open_favorites_window).pack(side="left", padx=5)
+
+    ctk.CTkLabel(master=app, text=t("hotkey_tip"),
+                 font=("Arial", 10), text_color="gray").pack(pady=(0, 2))
+
+    extra_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+    extra_frame.pack(pady=5)
+
+    make_button(master=extra_frame, text="🕘 " + t("recent"), width=170, height=35, corner_radius=8,
+                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+                  command=open_recent_window).pack(side="left", padx=5)
+
+    make_button(master=extra_frame, text="🔍 " + t("find_duplicates"), width=170, height=35, corner_radius=8,
+                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+                  command=open_duplicates_window).pack(side="left", padx=5)
+
+    bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+    bottom_frame.pack(pady=5)
+
+    password_button = make_button(master=bottom_frame, text=t("password_btn"), width=170, height=35,
+                                     corner_radius=8, fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER,
+                                     font=("Arial", 13), command=open_password_window)
+    password_button.pack(side="left", padx=5)
+
+    make_button(master=bottom_frame, text="🗑️ " + t("clear_all"), width=170, height=35, corner_radius=8,
+                  fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, font=("Arial", 13),
+                  command=clear_all_contacts_window).pack(side="left", padx=5)
+
+    settings_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+    settings_frame.pack(pady=5)
+
+    make_button(master=settings_frame, text="⚙️ " + t("settings"), width=345, height=35, corner_radius=8,
+                  fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
+                  command=open_settings_window).pack(side="left", padx=5)
+
+    # Статистика (всего контактов / в избранном) и бейдж ближайших дней
+    # рождения — размещены вместе с остальными кнопками внизу главного экрана.
+    stats_frame = ctk.CTkFrame(master=app, fg_color="transparent")
+    stats_frame.pack(pady=(8, 5))
+
+    stats_label = ctk.CTkLabel(master=stats_frame, text="", font=("Arial", 12),
+                                text_color="gray")
+    stats_label.pack(side="left", padx=5)
+
+    birthday_badge = make_button(
+        master=stats_frame, text="", width=70, height=24, corner_radius=12,
+        fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER, font=("Arial", 11, "bold"),
+        command=open_birthday_list_window
+    )
+    # Бейдж скрывается через pack_forget(), если нет близких дней рождения —
+    # update_birthday_badge() управляет его видимостью при каждом обновлении
+    # списка контактов.
+
+    update_password_button_text()
+
+
+def rebuild_main_screen():
+    """
+    Полностью пересобирает главный экран на текущем языке (после смены языка
+    в Settings). Удаляет все существующие дочерние виджеты app и вызывает
+    build_main_screen() заново, затем обновляет список контактов и статистику.
+    """
+    for widget in app.winfo_children():
+        if not isinstance(widget, ctk.CTkToplevel):
+            widget.destroy()
+    build_main_screen()
+    show_all_contacts()
+
+
 app.bind_all("<KeyPress>", _handle_global_hotkeys)
 
-filter_frame = ctk.CTkFrame(master=app, fg_color="transparent")
-filter_frame.pack(pady=5)
-
-category_row = ctk.CTkFrame(master=filter_frame, fg_color="transparent")
-category_row.pack(pady=2)
-
-ctk.CTkLabel(master=category_row, text="Category:", font=("Arial", 13), width=70, anchor="e").pack(
-    side="left", padx=5)
-
-category_filter_var = ctk.StringVar(value=CATEGORY_ALL)
-category_filter_menu = ctk.CTkOptionMenu(
-    master=category_row, values=[CATEGORY_ALL] + CATEGORIES, variable=category_filter_var,
-    width=180, command=lambda choice: search_contact()
-)
-category_filter_menu.pack(side="left", padx=5)
-
-sort_row = ctk.CTkFrame(master=filter_frame, fg_color="transparent")
-sort_row.pack(pady=2)
-
-ctk.CTkLabel(master=sort_row, text="Sort by:", font=("Arial", 13), width=70, anchor="e").pack(
-    side="left", padx=5)
-
-sort_var = ctk.StringVar(value=SORT_NAME_AZ)
-sort_menu = ctk.CTkOptionMenu(
-    master=sort_row, values=SORT_OPTIONS, variable=sort_var,
-    width=180, command=lambda choice: search_contact()
-)
-sort_menu.pack(side="left", padx=5)
-
-contacts_frame = ctk.CTkScrollableFrame(
-    master=app, width=400, height=280, corner_radius=8,
-    label_text=f"Contact list ({len(contacts)})", label_font=("Arial", 12, "bold")
-)
-contacts_frame.pack(pady=20)
-
-btn_frame = ctk.CTkFrame(master=app, fg_color="transparent")
-btn_frame.pack(pady=10)
-
-make_button(master=btn_frame, text="Add contact", width=170, height=40, corner_radius=8,
-              fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER, font=("Arial", 14, "bold"),
-              command=open_add_contact_window).pack(side="left", padx=5)
-
-make_button(master=btn_frame, text="Favorites", width=170, height=40, corner_radius=8,
-              fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, font=("Arial", 14, "bold"),
-              command=open_favorites_window).pack(side="left", padx=5)
-
-ctk.CTkLabel(master=app, text="Tip: Ctrl+N — new contact   ·   Ctrl+F — search",
-             font=("Arial", 10), text_color="gray").pack(pady=(0, 2))
-
-extra_frame = ctk.CTkFrame(master=app, fg_color="transparent")
-extra_frame.pack(pady=5)
-
-make_button(master=extra_frame, text="🕘 Recent", width=170, height=35, corner_radius=8,
-              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
-              command=open_recent_window).pack(side="left", padx=5)
-
-make_button(master=extra_frame, text="🔍 Find duplicates", width=170, height=35, corner_radius=8,
-              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
-              command=open_duplicates_window).pack(side="left", padx=5)
-
-bottom_frame = ctk.CTkFrame(master=app, fg_color="transparent")
-bottom_frame.pack(pady=5)
-
-password_button = make_button(master=bottom_frame, text="🔐 Password", width=170, height=35, corner_radius=8,
-                                 fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
-                                 command=open_password_window)
-password_button.pack(side="left", padx=5)
-
-make_button(master=bottom_frame, text="🗑️ Clear all", width=170, height=35, corner_radius=8,
-              fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER, font=("Arial", 13),
-              command=clear_all_contacts_window).pack(side="left", padx=5)
-
-settings_frame = ctk.CTkFrame(master=app, fg_color="transparent")
-settings_frame.pack(pady=5)
-
-make_button(master=settings_frame, text="⚙️ Settings", width=345, height=35, corner_radius=8,
-              fg_color=COLOR_GRAY, hover_color=COLOR_GRAY_HOVER, font=("Arial", 13),
-              command=open_settings_window).pack(side="left", padx=5)
-
-update_password_button_text()
+build_main_screen()
 
 if password_is_set:
     show_lock_screen(show_all_contacts_animated)
